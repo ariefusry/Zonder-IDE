@@ -38,6 +38,15 @@ async function listBranches(repo) {
   return out ? out.split(/\r?\n/) : [];
 }
 
+// The branch checked out in the main repo; the spawn modal preselects it.
+async function currentBranch(repo) {
+  try {
+    return await git(repo, ['symbolic-ref', '--short', '-q', 'HEAD']);
+  } catch {
+    return null; // detached HEAD
+  }
+}
+
 function makeSlug(name, taken) {
   let base = String(name)
     .normalize('NFKD')
@@ -88,4 +97,4 @@ async function isDirty(wtPath) {
   return (await git(wtPath, ['status', '--porcelain'])) !== '';
 }
 
-module.exports = { isGitRepo, listBranches, makeSlug, createWorktree, removeWorktree, isDirty };
+module.exports = { isGitRepo, listBranches, currentBranch, makeSlug, createWorktree, removeWorktree, isDirty };

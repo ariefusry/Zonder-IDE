@@ -73,6 +73,7 @@ const handlers = {
   onApproval: answerApproval,
   onToggleTool: toggleTool,
   onModel: changeModel,
+  onStop: openStopDialog,
 };
 
 function chat(id) {
@@ -83,7 +84,7 @@ function chat(id) {
 function renderChrome() {
   renderSidebar(state, select);
   renderTabs(state, handlers);
-  renderHead(state);
+  renderHead(state, handlers);
   renderComposer(state, handlers);
 
   const note = document.getElementById('centerNote');
@@ -93,7 +94,7 @@ function renderChrome() {
   } else if (state.error) {
     note.append(el('h1', {}, 'Agent gagal dimuat'), state.error);
   } else if (!state.agents.length) {
-    note.append(el('h1', {}, 'Apa yang ingin dikerjakan?'), 'Agent yang dibuat akan muncul di sini.');
+    note.append(el('h1', {}, 'Apa yang ingin dikerjakan?'), 'Klik Spawn Agent untuk membuat agent pertama.');
   } else {
     // TODO(Task 10): the isometric office replaces this label.
     note.append('Kantor isometrik belum dibangun. Status agent ada di daftar kiri.');
@@ -179,6 +180,23 @@ function changeModel(agentId, model) {
   });
 }
 
+function removeAgent(id) {
+  state.agents = state.agents.filter((a) => a.id !== id);
+  delete state.chats[id];
+  delete state.queue[id];
+  if (state.selected === id) {
+    state.selected = null;
+    if (state.agents.length) select(state.agents[0].id);
+  }
+  render();
+}
+
+function onSpawned(record) {
+  if (!state.agents.some((a) => a.id === record.id)) state.agents.push(record);
+  select(record.id);
+  document.getElementById('input').focus();
+}
+
 let refreshing = null;
 // An event for an agent the list does not have yet (spawned after load): fetch the list again.
 function refreshAgents() {
@@ -191,6 +209,10 @@ function refreshAgents() {
 
 // Statuses, models and queues belong to main; the renderer only mirrors its events.
 function onAgentEvent(evt) {
+  if (evt.type === 'agent_removed') {
+    removeAgent(evt.agentId);
+    return;
+  }
   const a = state.agents.find((x) => x.id === evt.agentId);
   if (!a) refreshAgents();
   if (evt.type === 'status' && a) a.status = evt.to;
@@ -253,6 +275,8 @@ document.getElementById('interrupt').addEventListener('click', () => {
 });
 
 async function load() {
+  initSpawnModal({ onSpawned });
+  initStopDialog();
   renderChrome();
   try {
     window.zonder.subscribeAgentEvents(onAgentEvent);

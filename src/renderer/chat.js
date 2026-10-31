@@ -22,7 +22,7 @@ function renderTabs(state, handlers) {
   }
 }
 
-function renderHead(state) {
+function renderHead(state, handlers) {
   const a = selectedAgent(state);
   const head = document.getElementById('chatHead');
   head.replaceChildren();
@@ -30,6 +30,11 @@ function renderHead(state) {
   const st = el('span', { class: 'st' }, STATUS[a.status].label);
   st.style.setProperty('--c', STATUS[a.status].color);
   head.append(el('b', {}, a.name), st, el('span', { class: 'role' }, a.role));
+  if (!a.sample) {
+    const stop = el('button', { class: 'btn btn-stop', 'aria-haspopup': 'dialog' }, a.status === 'stopped' ? 'Bersihkan' : 'Hentikan');
+    stop.addEventListener('click', () => handlers.onStop(a));
+    head.append(stop);
+  }
 }
 
 let modelKey = null;

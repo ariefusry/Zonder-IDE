@@ -187,3 +187,14 @@ test('pendingFor returns the open cards of one agent, for a renderer that reload
   assert.deepEqual(cards.map((c) => [c.type, c.requestId, c.summary]), [['approval_request', 'req-1', 'a']]);
   assert.deepEqual(s.approvals.pendingFor('nobody'), []);
 });
+
+test('a removed agent loses its session grants', async () => {
+  const s = setup();
+  const p = s.approvals.handle('a1', write(), s.ctx);
+  s.approvals.respond('req-1', 'session');
+  await p;
+  s.store.remove('a1');
+  s.store.add({ id: 'a1', name: 'Raka', role: 'Junior Developer', status: 'working' });
+  s.approvals.handle('a1', write(), s.ctx);
+  assert.equal(s.requests().length, 2, 'asks again');
+});

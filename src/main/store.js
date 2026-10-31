@@ -40,6 +40,11 @@ class AgentStore {
     return this.records.get(id);
   }
 
+  remove(id) {
+    if (!this.records.delete(id)) return;
+    this.emit({ agentId: id, type: 'agent_removed' });
+  }
+
   list() {
     return [...this.records.values()];
   }

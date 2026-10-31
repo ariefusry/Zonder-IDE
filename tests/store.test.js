@@ -93,3 +93,16 @@ test('list returns added records; unknown id throws on setStatus', () => {
   assert.deepEqual(store.list().map((r) => r.id), ['a1']);
   assert.throws(() => store.setStatus('nope', 'working'), /unknown agent/);
 });
+
+test('remove drops the record and emits agent_removed', () => {
+  const store = new AgentStore();
+  store.add({ id: 'x1', name: 'X', status: 'stopped' });
+  const events = [];
+  store.subscribe((e) => events.push(e));
+  store.remove('x1');
+  assert.equal(store.get('x1'), undefined);
+  assert.equal(events[0].type, 'agent_removed');
+  assert.equal(events[0].agentId, 'x1');
+  store.remove('x1');
+  assert.equal(events.length, 1, 'removing twice emits once');
+});

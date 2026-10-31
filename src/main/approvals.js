@@ -18,6 +18,7 @@ class Approvals {
     this.pending = new Map();
     this.grants = new Map();
     store.subscribe((evt) => {
+      if (evt.type === 'agent_removed') this.grants.delete(evt.agentId);
       if (evt.type === 'status' && TURN_OVER.has(evt.to)) this.cancel(evt.agentId, evt.to === 'stopped' ? 'Agent dihentikan sebelum izin dijawab.' : 'Giliran selesai sebelum izin dijawab.');
     });
   }

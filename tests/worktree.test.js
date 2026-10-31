@@ -135,3 +135,12 @@ test('removeWorktree refuses the main checkout and non-zonder branches', async (
   assert.ok(fs.existsSync(res.path));
   assert.ok((await wt.listBranches(repo)).includes('main'));
 });
+
+test('currentBranch names the checked-out branch, null when detached', async (t) => {
+  const { repo } = makeRepo(t);
+  assert.equal(await wt.currentBranch(repo), 'main');
+  git(repo, 'checkout', '-q', '-b', 'feature/y');
+  assert.equal(await wt.currentBranch(repo), 'feature/y');
+  git(repo, 'checkout', '-q', '--detach');
+  assert.equal(await wt.currentBranch(repo), null);
+});
