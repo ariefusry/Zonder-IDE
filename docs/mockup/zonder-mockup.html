@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zonder Mockup</title>
+<style>
+  /* Tokens: DESIGN.md. Gelap saja, permintaan pemilik. */
+  :root {
+    --bg: #0b0b0c;
+    --surface: #131314;
+    --surface-2: #1b1b1d;
+    --border: #2a2a2d;
+    --text: #ececee;
+    --muted: #9a9aa2;
+    --accent: #0a6cd6;
+    --accent-text: #4da3ff;
+    --st-working: #4da3ff;
+    --st-thinking: #a78bfa;
+    --st-approval: #f59e0b;
+    --st-testing: #2dd4bf;
+    --st-done: #22c55e;
+    --st-error: #f87171;
+    --st-idle: #9a9aa2;
+    --font: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+    --mono: 'Cascadia Code', Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--text); font: 12px/1.5 var(--font);
+    display: flex; flex-direction: column; min-width: 1100px; overflow: hidden;
+  }
+  button, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+
+  /* Bilah judul Windows asli (ditampilkan sebagai gambaran) */
+  .titlebar {
+    height: 32px; background: var(--bg); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding-left: 12px; flex-shrink: 0;
+  }
+  .titlebar .name { font-size: 12px; }
+  .titlebar .note { margin-left: 14px; font-size: 11px; color: var(--muted); }
+  .winctl { margin-left: auto; display: flex; height: 100%; }
+  .winctl span { width: 46px; display: grid; place-items: center; color: var(--muted); font-size: 11px; }
+
+  .main { flex: 1; display: grid; grid-template-columns: 220px 1fr 340px; min-height: 0; }
+
+  /* Sidebar */
+  .sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+  .spawn-wrap { padding: 12px; }
+  .btn-spawn {
+    width: 100%; height: 32px; background: transparent; border: 1px solid var(--border);
+    border-radius: 6px; font-weight: 500;
+  }
+  .btn-spawn:hover { background: var(--surface-2); }
+  .side-label { padding: 4px 14px 6px; font-size: 11px; color: var(--muted); }
+  .agent-list { flex: 1; overflow-y: auto; padding: 0 8px 8px; display: flex; flex-direction: column; gap: 6px; }
+  .agent {
+    width: 100%; text-align: left; background: transparent; border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; display: grid; grid-template-columns: 8px 1fr; gap: 0 9px;
+  }
+  .agent:hover { background: var(--surface-2); }
+  .agent[aria-selected="true"] { background: var(--surface-2); border-color: var(--accent-text); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--st-idle)); margin-top: 5px; }
+  .agent .nm { font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agent .md { font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agent .stt { grid-column: 2; font-size: 11px; color: var(--c, var(--muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .router { border-top: 1px solid var(--border); padding: 10px 14px; font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+
+  /* Kantor */
+  .office { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
+  .toolbar { height: 36px; border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 14px; gap: 14px; flex-shrink: 0; background: var(--surface); }
+  .toolbar h2 { font-size: 13px; font-weight: 600; }
+  .legend { margin-left: auto; display: flex; gap: 12px; font-size: 11px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend .dot { margin: 0; }
+  .canvas-wrap { flex: 1; position: relative; min-height: 0; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: pointer; }
+
+  /* Chat */
+  .chat { background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+  .tabs { display: flex; overflow-x: auto; border-bottom: 1px solid var(--border); flex-shrink: 0; scrollbar-width: none; }
+  .tab { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 9px 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .tab:hover { color: var(--text); }
+  .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent-text); }
+  .tab .dot { margin: 0; width: 6px; height: 6px; }
+  .chat-head { padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: baseline; gap: 8px; flex-shrink: 0; }
+  .chat-head b { font-size: 13px; }
+  .chat-head span { font-size: 11px; color: var(--muted); }
+  .chat-head .role { margin-left: auto; }
+  .msgs { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .m-user { align-self: flex-end; max-width: 88%; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; }
+  .m-user small { display: block; color: var(--muted); font-size: 11px; }
+  .m-agent .who { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+  .m-agent p + p { margin-top: 6px; }
+  pre.code { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font: 11px/1.5 var(--mono); overflow-x: auto; margin-top: 6px; }
+  .tool { border: 0; background: transparent; width: 100%; text-align: left; color: var(--muted); font: 11px var(--mono); display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+  .tool:hover { color: var(--text); }
+  .tool .tag { color: var(--text); }
+  .tool .sum { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tool-detail { margin: 2px 0 4px 0; padding: 6px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font: 11px/1.5 var(--mono); color: var(--muted); white-space: pre-wrap; }
+  .tool-detail[hidden] { display: none; }
+  .queued { font-size: 11px; color: var(--muted); align-self: flex-end; }
+
+  .approval { border: 1px solid var(--st-approval); border-radius: 8px; padding: 10px 12px; background: var(--surface-2); box-shadow: 0 6px 18px rgba(0,0,0,.45); }
+  .approval h3 { font-size: 12px; font-weight: 600; }
+  .approval .why { color: var(--muted); font-size: 11px; margin: 6px 0 10px; }
+  .approval pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; font: 11px var(--mono); margin-top: 6px; }
+  .approval .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .btn { height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border); background: transparent; font-size: 11px; }
+  .btn:hover { background: var(--bg); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #0b5fbd; }
+  .resolved { font-size: 11px; color: var(--muted); border-left: 0; padding: 2px 0; }
+
+  .composer { margin: 0 12px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); padding: 8px 10px 8px; flex-shrink: 0; }
+  .composer textarea { width: 100%; background: transparent; border: 0; outline: 0; resize: none; min-height: 40px; max-height: 120px; line-height: 1.5; }
+  .composer textarea::placeholder { color: var(--muted); }
+  .composer:focus-within { border-color: var(--accent-text); }
+  .comp-row { display: flex; align-items: center; gap: 8px; }
+  .comp-row select { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; font: 11px var(--mono); max-width: 170px; }
+  .comp-row .q { font-size: 11px; color: var(--muted); }
+  .comp-row .sp { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .send { width: 28px; height: 28px; border-radius: 50%; border: 0; background: var(--text); color: var(--bg); font-weight: 700; }
+  .send:hover { background: #fff; }
+
+  /* Bilah status */
+  .statusbar { height: 24px; background: var(--surface); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 14px; gap: 18px; font-size: 11px; color: var(--muted); flex-shrink: 0; }
+  .statusbar b { color: var(--text); font-weight: 500; }
+  .statusbar .r { margin-left: auto; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="titlebar">
+  <span class="name">Zonder</span>
+  <span class="note">Mockup dengan data contoh. Nama agent, angka, dan isi chat bukan data nyata.</span>
+  <div class="winctl" aria-hidden="true"><span>&#8211;</span><span>&#9633;</span><span>&#10005;</span></div>
+</div>
+
+<div class="main">
+
+  <aside class="sidebar" aria-label="Agent">
+    <div class="spawn-wrap"><button class="btn-spawn" id="spawn">Spawn Agent</button></div>
+    <div class="side-label">Agent</div>
+    <div class="agent-list" id="agentList" role="tablist" aria-orientation="vertical"></div>
+    <div class="router"><span class="dot" style="--c: var(--st-done); margin:0"></span><span>9router terhubung</span></div>
+  </aside>
+
+  <section class="office" aria-label="Kantor">
+    <div class="toolbar">
+      <h2>Kantor</h2>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="canvas-wrap"><canvas id="office" aria-label="Kantor isometrik; klik avatar untuk memilih agent"></canvas></div>
+  </section>
+
+  <section class="chat" aria-label="Chat">
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <div class="chat-head" id="chatHead"></div>
+    <div class="msgs" id="msgs"></div>
+    <form class="composer" id="composer">
+      <textarea id="input" rows="2" placeholder="Pesan untuk agent..."></textarea>
+      <div class="comp-row">
+        <select id="model" aria-label="Model agent"></select>
+        <span class="q" id="queue"></span>
+        <div class="sp">
+          <button type="button" class="btn" id="interrupt" hidden>Interupsi</button>
+          <button class="send" aria-label="Kirim pesan">&#8593;</button>
+        </div>
+      </div>
+    </form>
+  </section>
+
+</div>
+
+<div class="statusbar">
+  <span>9router <b>terhubung</b></span>
+  <span>Agent aktif <b id="activeCount">0</b></span>
+  <span class="r">RTK <b>&#8212;</b></span>
+</div>
+
+<script>
+const ST = {
+  working:  { c: 'var(--st-working)',  hex: '#4da3ff', label: 'bekerja' },
+  thinking: { c: 'var(--st-thinking)', hex: '#a78bfa', label: 'berpikir' },
+  approval: { c: 'var(--st-approval)', hex: '#f59e0b', label: 'menunggu izin' },
+  testing:  { c: 'var(--st-testing)',  hex: '#2dd4bf', label: 'menguji' },
+  done:     { c: 'var(--st-done)',     hex: '#22c55e', label: 'selesai' },
+  error:    { c: 'var(--st-error)',    hex: '#f87171', label: 'error' },
+  idle:     { c: 'var(--st-idle)',     hex: '#9a9aa2', label: 'diam' },
+};
+// Zona -> kursi eksplisit (grid logis); proyeksi isometrik dipisah.
+const SEATS = {
+  desk:       { A1: [3, 3.5], A2: [5, 3.5], A3: [7, 3.5] },
+  whiteboard: { W1: [4.5, 1.2] },
+  meeting:    { M1: [8.2, 6.0], M2: [10.2, 6.4] },
+  qa:         { Q1: [9.2, 1.0] },
+  lounge:     { L1: [5.2, 8.7], L2: [7.4, 8.5] },
+  coffee:     { C1: [2.0, 8.9] },
+};
+const ZONE_OF = { working: 'desk', error: 'desk', thinking: 'whiteboard', approval: 'meeting', testing: 'qa', done: 'lounge', idle: 'coffee' };
+
+const MODELS = ['cc/claude-sonnet-4-6', 'cc/claude-opus-4-7', 'cc/claude-haiku-4-5', 'kr/claude-sonnet-4.5', 'glm/glm-5.1', 'minimax/MiniMax-M2.5'];
+
+const agents = [
+  { id: 'a1', name: 'Raka',   role: 'Senior Developer', model: 'cc/claude-sonnet-4-6', status: 'working',  line: 'Menulis auth.test.ts', desk: 'A1' },
+  { id: 'a2', name: 'Nadia',  role: 'Junior Developer', model: 'glm/glm-5.1',          status: 'approval', line: 'Minta izin: npm install zod' },
+  { id: 'a3', name: 'Bima',   role: 'Reviewer',         model: 'cc/claude-opus-4-7',   status: 'thinking', line: 'Membaca diff cabang' },
+  { id: 'a4', name: 'Sari',   role: 'QA Engineer',      model: 'cc/claude-haiku-4-5',  status: 'testing',  line: 'npm run test:auth' },
+  { id: 'a5', name: 'Dewi',   role: 'Researcher',       model: 'minimax/MiniMax-M2.5', status: 'done',     line: 'Ringkasan riset siap' },
+  { id: 'a6', name: 'Tio',    role: 'Senior Developer', model: 'kr/claude-sonnet-4.5', status: 'error',    line: 'Router offline', desk: 'A3' },
+  { id: 'a7', name: 'Gilang', role: 'Junior Developer', model: 'cc/claude-haiku-4-5',  status: 'idle',     line: 'Belum diberi tugas' },
+];
+const chats = {
+  a1: [
+    { t: 'agent', text: ['Saya mulai dari test suite untuk modul auth.'] },
+    { t: 'user', text: 'Tambahkan juga kasus token kedaluwarsa.', time: '14:33' },
+    { t: 'agent', text: ['Siap. Menulis kasusnya:'], code: "it('rejects expired token', async () => {\n  const token = sign({}, secret, { expiresIn: -1 });\n  await expect(verify(token)).rejects.toThrow();\n});" },
+    { t: 'tool', tag: 'write', sum: 'src/auth/auth.test.ts', detail: 'Menulis 18 baris ke worktree agent.' },
+    { t: 'tool', tag: 'bash', sum: 'npm run test:auth', detail: '$ npm run test:auth\nberjalan...' },
+  ],
+  a2: [
+    { t: 'user', text: 'Tambahkan validasi input untuk form daftar.', time: '14:20' },
+    { t: 'agent', text: ['Saya pakai zod untuk skema validasi. Paketnya belum terpasang.'] },
+    { t: 'approval' },
+  ],
+  a3: [
+    { t: 'user', text: 'Review perubahan di cabang zonder/raka.', time: '14:25' },
+    { t: 'tool', tag: 'read', sum: 'git diff main...HEAD', detail: 'Hanya baca. Reviewer tidak punya akses tulis.' },
+    { t: 'agent', text: ['Masih membaca perubahan. Belum ada temuan.'] },
+  ],
+  a4: [
+    { t: 'agent', text: ['Menjalankan tes yang ada sebelum menambah kasus.'] },
+    { t: 'tool', tag: 'bash', sum: 'npm run test:auth', detail: '$ npm run test:auth\nberjalan...' },
+  ],
+  a5: [
+    { t: 'user', text: 'Bandingkan dua pustaka JWT untuk Node.', time: '13:50' },
+    { t: 'agent', text: ['Ringkasan sudah selesai di catatan riset. Dua pustaka itu setara untuk kasus ini; yang berbeda hanya ukuran dan dukungan algoritma.'] },
+  ],
+  a6: [
+    { t: 'user', text: 'Rapikan modul sesi.', time: '14:10' },
+    { t: 'agent', text: ['Tidak bisa menjangkau router. Percobaan terakhir gagal.'] },
+  ],
+  a7: [],
+};
+
+let selected = 'a1';
+let sessionGrants = {};
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const byId = id => agents.find(a => a.id === id);
+
+function renderSidebar() {
+  $('agentList').innerHTML = agents.map(a => `
+    <button class="agent" role="tab" aria-selected="${a.id === selected}" data-id="${a.id}" style="--c:${ST[a.status].c}">
+      <span class="dot"></span>
+      <span class="nm">${esc(a.name)}</span>
+      <span></span><span class="md">${esc(a.model)}</span>
+      <span class="stt">${ST[a.status].label}: ${esc(a.line)}</span>
+    </button>`).join('');
+  $('tabs').innerHTML = agents.map(a => `
+    <button class="tab" role="tab" aria-selected="${a.id === selected}" data-id="${a.id}">
+      <span class="dot" style="--c:${ST[a.status].c}"></span>${esc(a.name)}
+    </button>`).join('');
+  const counts = {};
+  agents.forEach(a => counts[a.status] = (counts[a.status] || 0) + 1);
+  $('legend').innerHTML = Object.keys(ST).map(k => `<span><span class="dot" style="--c:${ST[k].c}"></span>${ST[k].label} ${counts[k] || 0}</span>`).join('');
+  $('activeCount').textContent = agents.filter(a => ['working', 'thinking', 'testing', 'approval'].includes(a.status)).length;
+}
+
+function renderChat() {
+  const a = byId(selected);
+  $('chatHead').innerHTML = `<b>${esc(a.name)}</b><span style="color:${ST[a.status].c}">${ST[a.status].label}</span><span class="role">${esc(a.role)}</span>`;
+  $('model').innerHTML = MODELS.concat(MODELS.includes(a.model) ? [] : [a.model]).map(m => `<option ${m === a.model ? 'selected' : ''}>${esc(m)}</option>`).join('');
+  const busy = ['working', 'thinking', 'testing'].includes(a.status);
+  $('interrupt').hidden = !busy;
+  const list = chats[a.id];
+  if (!list.length) {
+    $('msgs').innerHTML = `<div style="margin:auto;text-align:center;color:var(--muted)"><div style="font-size:16px;color:var(--text);margin-bottom:4px">Apa yang ingin dikerjakan?</div>Beri ${esc(a.name)} tugas pertama.</div>`;
+  } else {
+    $('msgs').innerHTML = list.map((m, i) => {
+      if (m.t === 'user') return `<div class="m-user">${esc(m.text)}<small>${m.time}${m.queued ? ' · menunggu giliran' : ''}</small></div>`;
+      if (m.t === 'agent') return `<div class="m-agent"><div class="who">${esc(a.name)}</div>${m.text.map(p => `<p>${esc(p)}</p>`).join('')}${m.code ? `<pre class="code">${esc(m.code)}</pre>` : ''}</div>`;
+      if (m.t === 'tool') return `<div><button class="tool" data-tool="${i}" aria-expanded="false"><span class="tag">${m.tag}</span><span class="sum">${esc(m.sum)}</span></button><div class="tool-detail" id="td${i}" hidden>${esc(m.detail)}</div></div>`;
+      if (m.t === 'resolved') return `<div class="resolved">${esc(m.text)}</div>`;
+      if (m.t === 'approval') return `<div class="approval" role="group" aria-label="Permintaan izin">
+        <h3>Izin dibutuhkan</h3>
+        <pre>$ npm install zod</pre>
+        <div class="why">Nadia (Junior Developer) ingin memasang paket. Pemasangan paket selalu bertanya.</div>
+        <div class="row">
+          <button class="btn" data-ap="once">Izinkan sekali</button>
+          <button class="btn" data-ap="session">Izinkan untuk sesi ini</button>
+          <button class="btn" data-ap="deny">Tolak</button>
+        </div></div>`;
+    }).join('');
+  }
+  const q = list.filter(m => m.queued).length;
+  $('queue').textContent = q ? `${q} pesan menunggu` : '';
+  $('msgs').scrollTop = $('msgs').scrollHeight;
+}
+
+function select(id) { selected = id; renderSidebar(); renderChat(); drawOffice(); }
+
+document.addEventListener('click', e => {
+  const sel = e.target.closest('[data-id]'); if (sel) return select(sel.dataset.id);
+  const tool = e.target.closest('[data-tool]');
+  if (tool) { const d = $('td' + tool.dataset.tool); d.hidden = !d.hidden; tool.setAttribute('aria-expanded', String(!d.hidden)); return; }
+  const ap = e.target.closest('[data-ap]');
+  if (ap) {
+    const a = byId('a2'), list = chats.a2, i = list.findIndex(m => m.t === 'approval');
+    const d = ap.dataset.ap;
+    list[i] = { t: 'resolved', text: d === 'deny' ? 'Ditolak. Agent menerima alasan penolakan.' : d === 'once' ? 'Diizinkan sekali: npm install zod' : 'Diizinkan untuk sesi ini: npm install zod' };
+    a.status = d === 'deny' ? 'thinking' : 'working';
+    a.line = d === 'deny' ? 'Mencari cara tanpa paket baru' : 'Menjalankan npm install zod';
+    renderSidebar(); renderChat(); drawOffice();
+  }
+});
+$('spawn').addEventListener('click', () => alert('Modal Spawn Agent belum ada di mockup ini.'));
+$('interrupt').addEventListener('click', () => {
+  const a = byId(selected); a.status = 'idle'; a.line = 'Dihentikan'; renderSidebar(); renderChat(); drawOffice();
+});
+$('composer').addEventListener('submit', e => {
+  e.preventDefault();
+  const v = $('input').value.trim(); if (!v) return;
+  const a = byId(selected), busy = ['working', 'thinking', 'testing', 'approval'].includes(a.status);
+  const d = new Date(), time = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  chats[a.id].push({ t: 'user', text: v, time, queued: busy });
+  $('input').value = ''; renderChat();
+});
+$('input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('composer').requestSubmit(); } });
+
+/* ---- Kantor isometrik (Canvas 2D) ---- */
+const cv = $('office'), ctx = cv.getContext('2d');
+const TW = 64, TH = 32, ZH = 32, GW = 12, GH = 11;
+let view = { s: 1, ox: 0, oy: 0 }, hits = [];
+const P = (gx, gy, z = 0) => [(gx - gy) * TW / 2, (gx + gy) * TH / 2 - z * ZH];
+
+function box(gx, gy, w, d, h, top, left, right) {
+  const poly = (pts, fill) => { ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = '#2a2a2d'; ctx.lineWidth = 1 / view.s; ctx.stroke(); };
+  poly([P(gx + w, gy, 0), P(gx + w, gy + d, 0), P(gx + w, gy + d, h), P(gx + w, gy, h)], right);
+  poly([P(gx, gy + d, 0), P(gx + w, gy + d, 0), P(gx + w, gy + d, h), P(gx, gy + d, h)], left);
+  poly([P(gx, gy, h), P(gx + w, gy, h), P(gx + w, gy + d, h), P(gx, gy + d, h)], top);
+}
+function floorRect(gx, gy, w, d, fill) {
+  ctx.beginPath(); [P(gx, gy), P(gx + w, gy), P(gx + w, gy + d), P(gx, gy + d)].forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+  ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
+}
+function label(gx, gy, text) {
+  const [x, y] = P(gx, gy); ctx.font = `${11 / view.s}px "Segoe UI", sans-serif`; ctx.fillStyle = '#9a9aa2'; ctx.textAlign = 'center'; ctx.fillText(text, x, y);
+}
+function ellipse(gx, gy, rx, ry, fill, stroke) {
+  const [x, y] = P(gx, gy); ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, 7); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1 / view.s; ctx.stroke(); }
+}
+
+function seatFor(a, taken) {
+  const zone = ZONE_OF[a.status], seats = SEATS[zone];
+  if (zone === 'desk' && a.desk && !taken.has(a.desk)) { taken.add(a.desk); return { zone, id: a.desk, pos: seats[a.desk] }; }
+  for (const id of Object.keys(seats)) if (!taken.has(id)) { taken.add(id); return { zone, id, pos: seats[id] }; }
+  const first = Object.keys(seats)[0]; return { zone, id: first, pos: seats[first] };
+}
+
+function avatar(a, pos, isSel) {
+  const [x, y] = P(pos[0], pos[1]), col = ST[a.status].hex, s = 1 / view.s;
+  ctx.beginPath(); ctx.ellipse(x, y, 12, 6, 0, 0, 7); ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x, y, 15, 7.5, 0, 0, 7); ctx.strokeStyle = isSel ? '#4da3ff' : col; ctx.lineWidth = (isSel ? 2.5 : 1.5) * s * view.s / view.s; ctx.stroke();
+  ctx.fillStyle = col; ctx.beginPath(); ctx.roundRect(x - 7, y - 24, 14, 20, 4); ctx.fill();
+  ctx.fillStyle = '#d8d8de'; ctx.beginPath(); ctx.arc(x, y - 29, 6, 0, 7); ctx.fill();
+  const glyph = { approval: '?', thinking: '...', error: '!' }[a.status];
+  if (glyph) { ctx.font = `700 ${12}px "Segoe UI", sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = col; ctx.fillText(glyph, x + 14, y - 34); }
+  ctx.font = '600 10px "Segoe UI", sans-serif'; ctx.textAlign = 'center';
+  const w = ctx.measureText(a.name).width + 12;
+  ctx.fillStyle = '#0b0b0c'; ctx.strokeStyle = '#2a2a2d'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(x - w / 2, y + 7, w, 15, 4); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#ececee'; ctx.fillText(a.name, x, y + 18);
+  hits.push({ id: a.id, x, y: y - 14 });
+}
+
+function drawOffice() {
+  const w = cv.clientWidth, h = cv.clientHeight, dpr = devicePixelRatio || 1;
+  if (cv.width !== w * dpr || cv.height !== h * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+  const bx0 = P(0, GH)[0], bx1 = P(GW, 0)[0], by0 = P(0, 0)[1] - 70, by1 = P(GW, GH)[1] + 40;
+  view.s = Math.min((w - 40) / (bx1 - bx0), (h - 40) / (by1 - by0), 1.4);
+  view.ox = w / 2 - (bx0 + bx1) / 2 * view.s; view.oy = h / 2 - (by0 + by1) / 2 * view.s;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  ctx.setTransform(dpr * view.s, 0, 0, dpr * view.s, dpr * view.ox, dpr * view.oy);
+  hits = [];
+
+  for (let gx = 0; gx < GW; gx++) for (let gy = 0; gy < GH; gy++) floorRect(gx, gy, 1, 1, (gx + gy) % 2 ? '#131314' : '#151516');
+  floorRect(0, 0, GW, GH, 'rgba(0,0,0,0)');
+  floorRect(2, 2.2, 7, 2.8, '#1b1b1d'); floorRect(3.2, 0.2, 3, 2.3, '#1b1b1d'); floorRect(8, 0.2, 3, 2.3, '#1b1b1d');
+  floorRect(7.6, 4.6, 3.8, 3.2, '#1b1b1d'); floorRect(4, 7.6, 5, 3, '#1b1b1d'); floorRect(0.2, 7.4, 3.4, 3.4, '#1b1b1d');
+
+  const T = '#2a2a2e', L = '#1f1f22', R = '#18181a';
+  // server rack (dekorasi, tanpa agent)
+  box(0.3, 0.3, 1, 0.9, 1.5, '#2a2a2e', '#1f1f22', '#18181a'); box(1.4, 0.3, 1, 0.9, 1.5, '#2a2a2e', '#1f1f22', '#18181a');
+  // whiteboard
+  box(3.5, 0.15, 2.2, 0.12, 1.4, '#d8d8de', '#9a9aa2', '#6e6e75');
+  // QA station: meja + monitor
+  box(8.2, 0.5, 2.4, 0.9, 0.45, T, L, R); box(8.5, 0.55, 0.5, 0.1, 0.9, '#0b0b0c', '#2dd4bf', '#1f8a7d'); box(9.2, 0.55, 0.5, 0.1, 0.9, '#0b0b0c', '#2dd4bf', '#1f8a7d');
+  // meja kerja
+  for (const [id, pos] of Object.entries(SEATS.desk)) box(pos[0] - 0.8, pos[1] + 0.3, 1.6, 0.8, 0.45, T, L, R);
+  // meeting pod
+  ellipse(9.2, 6.4, 38, 19, '#2a2a2e', '#3a3a3f'); ellipse(9.2, 6.4, 30, 15, '#222225');
+  // lounge
+  ellipse(5.2, 9.0, 24, 12, '#2a2a2e', '#3a3a3f'); ellipse(7.4, 8.8, 24, 12, '#2a2a2e', '#3a3a3f');
+  // coffee bar
+  box(0.5, 8.0, 0.8, 2.4, 0.7, T, L, R);
+
+  label(4.7, 2.9, 'Meja kerja'); label(4.6, 0.1, 'Whiteboard'); label(9.4, 0.1, 'QA'); label(9.4, 4.8, 'Meeting pod'); label(6.4, 10.1, 'Lounge'); label(1.4, 10.6, 'Coffee bar');
+
+  const taken = new Set(), placed = [];
+  agents.forEach(a => placed.push({ a, seat: seatFor(a, taken) }));
+  placed.sort((p, q) => P(...p.seat.pos)[1] - P(...q.seat.pos)[1]);
+  placed.forEach(({ a, seat }) => {
+    if (a.status === 'error') { const [x, y] = P(seat.pos[0], seat.pos[1] + 0.7, 0.45); ctx.fillStyle = '#f87171'; ctx.beginPath(); ctx.roundRect(x - 9, y - 6, 18, 9, 2); ctx.fill(); }
+    avatar(a, seat.pos, a.id === selected);
+  });
+}
+cv.addEventListener('click', e => {
+  const r = cv.getBoundingClientRect(), x = (e.clientX - r.left - view.ox) / view.s, y = (e.clientY - r.top - view.oy) / view.s;
+  let best = null, bd = 28;
+  hits.forEach(h => { const d = Math.hypot(h.x - x, h.y - y); if (d < bd) { bd = d; best = h; } });
+  if (best) select(best.id);
+});
+new ResizeObserver(drawOffice).observe(cv);
+
+renderSidebar(); renderChat(); drawOffice();
+</script>
+</body>
+</html>
