@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:">
+<title>Zonder</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="main">
+
+  <aside class="sidebar" aria-label="Agent">
+    <div class="spawn-wrap">
+      <!-- TODO(Task 9): open the spawn modal. -->
+      <button class="btn-spawn" id="spawn" disabled aria-describedby="spawnNote">Spawn Agent</button>
+      <p class="note" id="spawnNote">Belum tersedia di versi ini.</p>
+    </div>
+    <div class="side-label">Agent</div>
+    <div class="agent-list" id="agentList" role="tablist" aria-orientation="vertical"></div>
+    <div class="router"><span class="dot"></span><span id="routerText">9router belum dikonfigurasi</span></div>
+  </aside>
+
+  <section class="office" aria-label="Kantor">
+    <div class="toolbar">
+      <h2>Kantor</h2>
+      <span class="sample" id="sampleNote" hidden>Data contoh: nama agent, model, dan isi chat bukan data nyata.</span>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="office" aria-label="Kantor isometrik"></canvas>
+      <div class="center-note" id="centerNote"></div>
+    </div>
+  </section>
+
+  <section class="chat" aria-label="Chat">
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <div class="chat-head" id="chatHead"></div>
+    <div class="msgs" id="msgs"></div>
+    <form class="composer" id="composer">
+      <textarea id="input" rows="2" placeholder="Pesan untuk agent..." aria-label="Pesan untuk agent"></textarea>
+      <div class="comp-row">
+        <select id="model" aria-label="Model agent"></select>
+        <span class="q" id="queue"></span>
+        <div class="sp">
+          <button type="button" class="btn" id="interrupt" hidden>Interupsi</button>
+          <button class="send" id="send" aria-label="Kirim pesan">&#8593;</button>
+        </div>
+      </div>
+    </form>
+  </section>
+
+</div>
+
+<footer class="statusbar">
+  <span>9router <b id="routerState">&#8212;</b></span>
+  <span>Agent aktif <b id="activeCount">0</b></span>
+  <span class="r">RTK <b>&#8212;</b></span>
+</footer>
+
+<script src="sidebar.js"></script>
+<script src="chat.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
