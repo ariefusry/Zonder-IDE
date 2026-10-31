@@ -1,0 +1,1 @@
+{"type":"control_request","request_id":"b9534983-e655-4fe8-b3da-f55f7ab27d66","request":{"subtype":"can_use_tool","tool_name":"Write","display_name":"Write","input":{"file_path":"C:\\wt\\hello.txt","content":"hi"},"description":"hello.txt","permission_suggestions":[{"type":"setMode","mode":"acceptEdits","destination":"session"}],"tool_use_id":"toolu_01ALV23PorFWnmzCFCAY5dMq"}}
