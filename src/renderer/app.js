@@ -95,9 +95,6 @@ function renderChrome() {
     note.append(el('h1', {}, 'Agent gagal dimuat'), state.error);
   } else if (!state.agents.length) {
     note.append(el('h1', {}, 'Apa yang ingin dikerjakan?'), 'Klik Spawn Agent untuk membuat agent pertama.');
-  } else {
-    // TODO(Task 10): the isometric office replaces this label.
-    note.append('Kantor isometrik belum dibangun. Status agent ada di daftar kiri.');
   }
 }
 
@@ -277,6 +274,11 @@ document.getElementById('interrupt').addEventListener('click', () => {
 async function load() {
   initSpawnModal({ onSpawned });
   initStopDialog();
+  startOffice(document.getElementById('office'), {
+    getAgents: () => state.agents,
+    getSelected: () => state.selected,
+    onSelect: select,
+  });
   renderChrome();
   try {
     window.zonder.subscribeAgentEvents(onAgentEvent);
