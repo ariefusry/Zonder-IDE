@@ -13,7 +13,7 @@
 const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseLine } = require('./claude-parse.js');
+const { parseLine, summarize } = require('./claude-parse.js');
 const { IllegalTransition } = require('../store.js');
 
 const PERMISSION_SETTINGS = {
@@ -71,6 +71,26 @@ function resolveClaudeExe(searchPath = process.env.PATH ?? process.env.Path ?? '
   return null;
 }
 
+const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
+
+// A Glob pattern can reach outside cwd on its own ("C:/Users/**", "../**"), so
+// such a pattern is checked as the path. Plain patterns stay inside cwd.
+const leavesCwd = (pattern) => path.isAbsolute(pattern) || /^[a-z]:/i.test(pattern) || pattern.startsWith('~') || /(^|[\\/])\.\.([\\/]|$)/.test(pattern);
+
+// can_use_tool (tool name + input) -> policy Action for decide().
+function toAction(tool, input = {}) {
+  const summary = summarize(tool, input);
+  if (tool === 'Bash' || tool === 'PowerShell') return { kind: 'shell', tool, command: input.command, summary };
+  if (WRITE_TOOLS.has(tool)) return { kind: 'write', tool, path: input.file_path ?? input.notebook_path, summary };
+  if (tool === 'Read') return { kind: 'read', tool, path: input.file_path, summary };
+  if (tool === 'Grep') return { kind: 'read', tool, path: input.path, summary };
+  if (tool === 'Glob') {
+    const pattern = typeof input.pattern === 'string' ? input.pattern : '';
+    return { kind: 'read', tool, path: input.path ?? (leavesCwd(pattern) ? pattern : undefined), summary };
+  }
+  return { kind: 'other', tool, summary };
+}
+
 function killTree(pid, execFile = childProcess.execFile) {
   return new Promise((resolve) => {
     // A failure here usually means the process is already gone.
@@ -82,11 +102,14 @@ function killTree(pid, execFile = childProcess.execFile) {
 const isBenignStderr = (line) => /hook/i.test(line) && /localhost|127\.0\.0\.1/.test(line);
 
 class ClaudeAgent {
-  constructor({ record, store, persistence, onApproval, spawn = childProcess.spawn, kill = killTree, resolveExe = resolveClaudeExe, doneIdleMs = 30000, startQuietMs = 5000 }) {
+  // onApproval(req) may return a Promise<{behavior, message?}>; its answer goes
+  // back to the CLI. With `approvals` and no onApproval, requests run through
+  // Approvals.handle with this agent's worktree and main checkout.
+  constructor({ record, store, persistence, approvals, onApproval, spawn = childProcess.spawn, kill = killTree, resolveExe = resolveClaudeExe, doneIdleMs = 30000, startQuietMs = 5000 }) {
     this.record = record;
     this.store = store;
     this.persistence = persistence;
-    this.onApproval = onApproval;
+    this.onApproval = onApproval ?? (approvals && ((req) => approvals.handle(record.id, toAction(req.tool, req.input), { worktree: record.worktreePath, mainRepo: record.workspace })));
     this.spawn = spawn;
     this.kill = kill;
     this.resolveExe = resolveExe;
@@ -201,8 +224,14 @@ class ClaudeAgent {
   handleLine(line) {
     const parsed = parseLine(line);
     if (parsed.control) {
-      this.pending.set(parsed.control.requestId, parsed.control);
-      this.onApproval?.({ agentId: this.record.id, ...parsed.control });
+      const { requestId } = parsed.control;
+      this.pending.set(requestId, parsed.control);
+      Promise.resolve()
+        .then(() => this.onApproval?.({ agentId: this.record.id, ...parsed.control }))
+        .then(
+          (answer) => answer?.behavior && this.respond(requestId, answer.behavior, undefined, answer.message),
+          (err) => this.respond(requestId, 'deny', undefined, `Gagal memeriksa izin: ${err.message}`),
+        );
       return;
     }
     for (const evt of parsed) this.handleEvent(evt);
@@ -302,4 +331,4 @@ class ClaudeAgent {
   }
 }
 
-module.exports = { ClaudeAgent, buildArgs, resolveClaudeExe, killTree, PERMISSION_SETTINGS };
+module.exports = { ClaudeAgent, buildArgs, resolveClaudeExe, killTree, toAction, PERMISSION_SETTINGS };

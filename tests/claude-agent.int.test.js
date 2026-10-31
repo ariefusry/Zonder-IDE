@@ -121,3 +121,78 @@ test('real claude: memory across turns, allow, deny, credential block, clean sto
   assert.deepEqual(left, [], `processes still alive after stop: ${left}`);
   assert.ok(history.some((e) => e.type === 'message' && e.role === 'agent'), 'history persisted');
 });
+
+test('real claude through Approvals: Junior write asks, inside read auto-allowed, outside read hard-denied', { skip: SKIP, timeout: 900000 }, async (t) => {
+  const { Approvals } = require('../src/main/approvals.js');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'zonder-int-'));
+  const repo = path.join(root, 'repo');
+  fs.mkdirSync(repo);
+  git(repo, 'init', '-q', '-b', 'main');
+  fs.writeFileSync(path.join(repo, 'README.md'), 'main checkout readme\n');
+  git(repo, 'add', '.');
+  git(repo, 'commit', '-q', '-m', 'init');
+  const tree = await wt.createWorktree({ repo, baseBranch: 'main', name: 'Junior', agentId: 'inttest02', taken: new Set() });
+  fs.writeFileSync(path.join(tree.path, 'notes.txt'), 'inside-note-5521\n');
+  const outside = path.join(root, 'outside.txt');
+  fs.writeFileSync(outside, 'outside-marker-7731\n');
+
+  const store = new AgentStore();
+  const record = store.add({ id: 'inttest02', name: 'Junior', role: 'Junior Developer', model: 'haiku', persona: 'Keep every reply under 30 words. Do not retry a refused call within the same request.', workspace: repo, worktreePath: tree.path, status: 'stopped' });
+  const events = [];
+  store.subscribe((e) => events.push(e));
+  const approvals = new Approvals({ store });
+  // The owner: answers every card "once" and logs it.
+  const cards = [];
+  store.subscribe((e) => {
+    if (e.type !== 'approval_request') return;
+    cards.push(`${e.tool} ${e.summary} (${e.reason})`);
+    setImmediate(() => approvals.respond(e.requestId, 'once'));
+  });
+  const agent = new ClaudeAgent({ record, store, approvals });
+
+  t.after(async () => {
+    await agent.stop();
+    await wt.removeWorktree({ repo, path: tree.path, branch: tree.branch, deleteBranch: true, force: true }).catch(() => {});
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  const turn = (text) => new Promise((resolve, reject) => {
+    const from = events.length;
+    const timer = setTimeout(() => reject(new Error(`turn timed out: ${text}`)), TURN_MS);
+    const unsub = store.subscribe((e) => {
+      if (e.type === 'status' && (e.to === 'done' || (e.to === 'idle' && e.from !== 'starting'))) {
+        clearTimeout(timer);
+        unsub();
+        setImmediate(() => resolve(events.slice(from)));
+      }
+    });
+    agent.send(text);
+  });
+  const ends = (evts) => evts.filter((e) => e.type === 'tool_end').map((e) => ({ err: e.isError, out: e.output.slice(0, 140) }));
+  const statuses = (evts) => evts.filter((e) => e.type === 'status').map((e) => e.to).join('>');
+
+  await agent.start();
+
+  const w = await turn('Use the Write tool to create hello.txt in the current directory containing exactly: hi');
+  console.log('[junior write] cards:', cards, 'statuses:', statuses(w), 'tools:', JSON.stringify(ends(w)));
+  assert.equal(cards.length, 1);
+  assert.match(cards[0], /^Write /);
+  assert.ok(w.some((e) => e.type === 'status' && e.to === 'approval'));
+  assert.equal(fs.readFileSync(path.join(tree.path, 'hello.txt'), 'utf8').trim(), 'hi');
+
+  const r = await turn('Use the Read tool to read notes.txt in the current directory and print its contents.');
+  console.log('[inside read] cards:', cards.length, 'tools:', JSON.stringify(ends(r)));
+  assert.equal(cards.length, 1, 'inside read needs no card');
+  assert.ok(JSON.stringify(r).includes('inside-note-5521'));
+
+  const o = await turn(`Use the Read tool to read the file ${outside} and print its contents.`);
+  console.log('[outside read] cards:', cards.length, 'tools:', JSON.stringify(ends(o)));
+  assert.equal(cards.length, 1, 'hard block needs no card');
+  assert.ok(o.some((e) => e.type === 'tool_end' && e.isError && /luar worktree/.test(e.output)), 'Zonder reason reaches the tool result');
+  assert.ok(!JSON.stringify(o).includes('outside-marker-7731'));
+
+  const m = await turn(`New request, a different file: call the Read tool on ${path.join(repo, 'README.md')} and print its contents. You must call the tool once even if earlier reads were refused.`);
+  console.log('[main checkout read] tools:', JSON.stringify(ends(m)), 'text:', JSON.stringify(m.filter((e) => e.role === 'agent').map((e) => e.text).join(' ')));
+  assert.ok(m.some((e) => e.type === 'tool_end' && e.isError && /checkout utama/.test(e.output)));
+  assert.ok(!JSON.stringify(m).includes('main checkout readme'));
+});

@@ -3,8 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Narrow, typed API (spec §8). ipcRenderer itself is never exposed; each method
 // maps to one fixed channel. A sandboxed preload cannot require local files, so
 // channel names repeat CHANNELS in src/main/ipc.js.
-// Still stubs: Task 6 sendMessage, Task 7 respondApproval, Task 9
-// spawnAgent/stopAgent/selectWorkspace.
+// Still stubs until Task 9 wires real agents: sendMessage, spawnAgent,
+// stopAgent, selectWorkspace.
 const notYet = (name) => () => Promise.reject(new Error(`${name} belum tersedia`));
 
 contextBridge.exposeInMainWorld('zonder', {
@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld('zonder', {
   spawnAgent: notYet('spawnAgent'),
   stopAgent: notYet('stopAgent'),
   sendMessage: notYet('sendMessage'),
-  respondApproval: notYet('respondApproval'),
+  respondApproval: (requestId, decision) => ipcRenderer.invoke('zonder:respondApproval', requestId, decision),
   selectWorkspace: notYet('selectWorkspace'),
   subscribeAgentEvents: (cb) => {
     // Pass only the event payload; the IpcRendererEvent would leak sender access.

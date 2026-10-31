@@ -49,10 +49,12 @@ if (process.versions.electron) {
   const { app, BrowserWindow, ipcMain } = require('electron');
   const { AgentStore } = require('./store.js');
   const { registerIpc } = require('./ipc.js');
+  const { Approvals } = require('./approvals.js');
   const store = new AgentStore();
+  const approvals = new Approvals({ store });
   let win = null;
   if (MOCK) seedMock(store);
-  registerIpc({ ipcMain, store, getWindow: () => win });
+  registerIpc({ ipcMain, store, getWindow: () => win, approvals });
   app.whenReady().then(() => {
     win = createWindow(BrowserWindow);
     app.on('activate', () => {

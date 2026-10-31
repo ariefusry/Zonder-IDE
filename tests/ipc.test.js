@@ -47,3 +47,25 @@ test('events are dropped when the window is gone', () => {
   assert.doesNotThrow(() => store.setStatus('a1', 'working'));
   assert.equal(win.sent.length, 0);
 });
+
+test('respondApproval passes a valid decision to approvals', async () => {
+  const handlers = {};
+  const got = [];
+  registerIpc({ ipcMain: { handle: (ch, fn) => { handlers[ch] = fn; } }, store: new AgentStore(), getWindow: () => null, approvals: { respond: (id, d) => got.push([id, d]) } });
+  for (const d of ['once', 'session', 'deny']) await handlers[CHANNELS.respondApproval]({}, 'req-1', d);
+  assert.deepEqual(got, [['req-1', 'once'], ['req-1', 'session'], ['req-1', 'deny']]);
+});
+
+test('respondApproval rejects bad ids, decisions and argument counts', async () => {
+  const handlers = {};
+  const got = [];
+  registerIpc({ ipcMain: { handle: (ch, fn) => { handlers[ch] = fn; } }, store: new AgentStore(), getWindow: () => null, approvals: { respond: (id, d) => got.push([id, d]) } });
+  const call = (...args) => async () => handlers[CHANNELS.respondApproval]({}, ...args);
+  await assert.rejects(call('req-1', 'always'), /decision/);
+  await assert.rejects(call('', 'once'), /requestId/);
+  await assert.rejects(call(42, 'once'), /requestId/);
+  await assert.rejects(call('x'.repeat(200), 'once'), /requestId/);
+  await assert.rejects(call('req-1'), /arguments/);
+  await assert.rejects(call('req-1', 'once', 'extra'), /arguments/);
+  assert.equal(got.length, 0);
+});

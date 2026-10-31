@@ -369,3 +369,91 @@ test('start after stop resumes the same session', async () => {
   assert.equal(args[args.indexOf('--resume') + 1], 'ef6d033a-2ef2-4ba5-b93d-edabdca54057');
   assert.equal(s.record.status, 'starting');
 });
+
+// --- Task 7: approvals ---
+
+const { toAction } = require('../src/main/agents/claude-agent.js');
+const { Approvals } = require('../src/main/approvals.js');
+
+test('toAction maps Claude tools to policy actions', () => {
+  assert.deepEqual(toAction('Bash', { command: 'npm test', description: 'x' }), { kind: 'shell', tool: 'Bash', command: 'npm test', summary: 'npm test' });
+  assert.equal(toAction('PowerShell', { command: 'ls' }).kind, 'shell');
+  assert.deepEqual(toAction('Read', { file_path: 'C:\wt\a.js' }), { kind: 'read', tool: 'Read', path: 'C:\wt\a.js', summary: 'C:\wt\a.js' });
+  for (const tool of ['Write', 'Edit', 'MultiEdit']) assert.deepEqual(toAction(tool, { file_path: 'a.js', content: 'x' }), { kind: 'write', tool, path: 'a.js', summary: 'a.js' });
+  assert.equal(toAction('NotebookEdit', { notebook_path: 'n.ipynb' }).path, 'n.ipynb');
+  assert.equal(toAction('Grep', { pattern: 'TODO', path: 'src' }).path, 'src');
+  assert.equal(toAction('Grep', { pattern: 'TODO' }).path, undefined);
+  assert.equal(toAction('Glob', { pattern: '**/*.js' }).path, undefined);
+  assert.equal(toAction('Glob', { pattern: '*.js', path: 'src' }).path, 'src');
+  assert.deepEqual(toAction('WebFetch', { url: 'https://x.test' }), { kind: 'other', tool: 'WebFetch', summary: 'https://x.test' });
+  assert.equal(toAction('mcp__srv__thing', {}).kind, 'other');
+});
+
+test('toAction treats a Glob pattern that leaves the worktree as its path', () => {
+  for (const pattern of ['C:/Users/me/**', 'C:\Users\**\*.txt', '~/.ssh/*', '../../**', 'src/../../x/*', '\\server\share\*']) {
+    assert.equal(toAction('Glob', { pattern }).path, pattern, pattern);
+  }
+});
+
+test('an onApproval promise answers the CLI with its behavior and message', async () => {
+  const s = setup({ agent: { onApproval: async () => ({ behavior: 'deny', message: 'Diblokir: di luar worktree agent.' }) } });
+  await s.agent.start();
+  await s.line(fixture('init'));
+  s.agent.send('tulis');
+  await s.line(fixture('control_can_use_tool'));
+  await tick();
+  assert.deepEqual(parse(s.child.writes[1]).response.response, { behavior: 'deny', message: 'Diblokir: di luar worktree agent.' });
+});
+
+test('a failing onApproval denies instead of leaving the CLI waiting', async () => {
+  const s = setup({ agent: { onApproval: async () => { throw new Error('boom'); } } });
+  await s.agent.start();
+  s.agent.send('tulis');
+  await s.line(fixture('control_can_use_tool'));
+  await tick();
+  assert.equal(parse(s.child.writes[1]).response.response.behavior, 'deny');
+});
+
+test('with approvals: Junior Write asks the owner, once allows; outside read is hard-denied with no card', async (t) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'zonder-appr-'));
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+  const repo = path.join(base, 'repo');
+  const wt = path.join(base, '.zonder-worktrees', 'agent1');
+  fs.mkdirSync(repo);
+  fs.mkdirSync(wt, { recursive: true });
+
+  const store = new AgentStore();
+  const record = store.add({ id: 'agent1', name: 'Raka', role: 'Junior Developer', model: 'haiku', persona: '', workspace: repo, worktreePath: wt, status: 'stopped' });
+  const events = [];
+  store.subscribe((e) => events.push(e));
+  const approvals = new Approvals({ store });
+  const child = fakeChild();
+  const agent = new ClaudeAgent({ record, store, approvals, spawn: () => child, kill: async () => child.exit(1), resolveExe: () => 'claude.exe', startQuietMs: 10 });
+  t.after(() => agent.stop());
+  const line = async (obj) => {
+    child.stdout.write(`${JSON.stringify(obj)}\n`);
+    await tick();
+  };
+  const canUse = (id, tool, input) => ({ type: 'control_request', request_id: id, request: { subtype: 'can_use_tool', tool_name: tool, tool_use_id: `tu-${id}`, input } });
+
+  await agent.start();
+  agent.send('tulis');
+  await line(canUse('r1', 'Write', { file_path: path.join(wt, 'hello.txt'), content: 'hi' }));
+  const card = events.find((e) => e.type === 'approval_request');
+  assert.equal(card.tool, 'Write');
+  assert.equal(card.summary, path.join(wt, 'hello.txt'));
+  assert.equal(record.status, 'approval');
+  assert.equal(child.writes.length, 1, 'nothing sent to the CLI before the owner answers');
+  approvals.respond(card.requestId, 'once');
+  await tick();
+  assert.deepEqual(parse(child.writes[1]).response, { subtype: 'success', request_id: 'r1', response: { behavior: 'allow', updatedInput: { file_path: path.join(wt, 'hello.txt'), content: 'hi' } } });
+  assert.equal(record.status, 'working');
+
+  await line(canUse('r2', 'Read', { file_path: path.join(repo, 'README.md') }));
+  await tick();
+  const res = parse(child.writes[2]).response;
+  assert.equal(res.request_id, 'r2');
+  assert.equal(res.response.behavior, 'deny');
+  assert.match(res.response.message, /checkout utama/);
+  assert.equal(events.filter((e) => e.type === 'approval_request').length, 1);
+});

@@ -87,7 +87,7 @@ function onAgentEvent(evt) {
 }
 
 // Sample cards only. The decision is not sent anywhere and the agent's status
-// does not change. TODO(Task 7): call window.zonder.respondApproval.
+// does not change. TODO(Task 8): real cards call window.zonder.respondApproval.
 function resolveApproval(agentId, index, decision) {
   const cmd = state.chats[agentId][index].command.replace(/^\$ /, '');
   const text = { once: `Diizinkan sekali: ${cmd}`, session: `Diizinkan untuk sesi ini: ${cmd}`, deny: 'Ditolak.' }[decision];
@@ -101,7 +101,7 @@ document.getElementById('composer').addEventListener('submit', (e) => {
   const text = input.value.trim();
   const a = state.agents.find((x) => x.id === state.selected);
   if (!text || !a) return;
-  // TODO(Task 6): send through window.zonder.sendMessage for real agents.
+  // TODO(Task 9): send through window.zonder.sendMessage for real agents.
   state.chats[a.id].push({ t: 'user', text, time: now(), queued: ACTIVE.includes(a.status) });
   input.value = '';
   render();
