@@ -1,17 +1,23 @@
-const { contextBridge } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
-// Narrow, typed API (spec §8). Stubs until the main-process handlers land:
-// Task 2 wires listAgents/subscribeAgentEvents, Task 6 sendMessage, Task 7
-// respondApproval, Task 9 spawnAgent/stopAgent/selectWorkspace.
-// ipcRenderer is never exposed.
+// Narrow, typed API (spec §8). ipcRenderer itself is never exposed; each method
+// maps to one fixed channel. A sandboxed preload cannot require local files, so
+// channel names repeat CHANNELS in src/main/ipc.js.
+// Still stubs: Task 6 sendMessage, Task 7 respondApproval, Task 9
+// spawnAgent/stopAgent/selectWorkspace.
 const notYet = (name) => () => Promise.reject(new Error(`${name} belum tersedia`));
 
 contextBridge.exposeInMainWorld('zonder', {
-  listAgents: () => Promise.resolve([]),
+  listAgents: () => ipcRenderer.invoke('zonder:listAgents'),
   spawnAgent: notYet('spawnAgent'),
   stopAgent: notYet('stopAgent'),
   sendMessage: notYet('sendMessage'),
   respondApproval: notYet('respondApproval'),
   selectWorkspace: notYet('selectWorkspace'),
-  subscribeAgentEvents: () => () => {},
+  subscribeAgentEvents: (cb) => {
+    // Pass only the event payload; the IpcRendererEvent would leak sender access.
+    const listener = (_e, evt) => cb(evt);
+    ipcRenderer.on('zonder:event', listener);
+    return () => ipcRenderer.removeListener('zonder:event', listener);
+  },
 });

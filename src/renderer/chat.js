@@ -23,6 +23,8 @@ function renderChat(state, handlers) {
 
   input.disabled = !a;
   model.hidden = !a;
+  // Shows the agent's model; switching models is not wired yet. TODO(Task 8).
+  model.disabled = true;
   document.getElementById('send').disabled = !a;
   document.getElementById('interrupt').hidden = !a || !BUSY.includes(a.status);
   document.getElementById('queue').textContent = '';

@@ -22,14 +22,10 @@ function el(tag, attrs, ...children) {
   return node;
 }
 
-// Sample data for layout work only (?mock / ZONDER_MOCK=1). The toolbar says so on screen.
+// Sample chat content for layout work only (?mock / ZONDER_MOCK=1); the sample
+// agents themselves come from the main-process store. The toolbar says so on screen.
+// TODO(Task 8): real history replaces this via getHistory.
 const MOCK_MODELS = ['claude-sonnet-4-6', 'claude-opus-4-7', 'claude-haiku-4-5'];
-const MOCK_AGENTS = [
-  { id: 'a1', name: 'Raka', role: 'Senior Developer', model: 'claude-sonnet-4-6', status: 'working', line: 'Menulis auth.test.ts' },
-  { id: 'a2', name: 'Nadia', role: 'Junior Developer', model: 'claude-haiku-4-5', status: 'approval', line: 'npm install zod' },
-  { id: 'a3', name: 'Bima', role: 'Reviewer', model: 'claude-opus-4-7', status: 'thinking', line: 'Membaca diff cabang' },
-  { id: 'a4', name: 'Sari', role: 'QA Engineer', model: 'claude-haiku-4-5', status: 'idle', line: '' },
-];
 const MOCK_CHATS = {
   a1: [
     { t: 'agent', text: 'Saya mulai dari test suite untuk modul auth.' },
@@ -82,15 +78,20 @@ function now() {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-// Mock-only: real approvals go through window.zonder.respondApproval (Task 7).
+// Statuses belong to the main-process store; the renderer only mirrors its events.
+function onAgentEvent(evt) {
+  const a = state.agents.find((x) => x.id === evt.agentId);
+  if (!a || evt.type !== 'status') return;
+  a.status = evt.to;
+  render();
+}
+
+// Sample cards only. The decision is not sent anywhere and the agent's status
+// does not change. TODO(Task 7): call window.zonder.respondApproval.
 function resolveApproval(agentId, index, decision) {
-  const a = state.agents.find((x) => x.id === agentId);
-  const item = state.chats[agentId][index];
-  const cmd = item.command.replace(/^\$ /, '');
-  const text = { once: `Diizinkan sekali: ${cmd}`, session: `Diizinkan untuk sesi ini: ${cmd}`, deny: 'Ditolak. Agent menerima alasan penolakan.' }[decision];
-  state.chats[agentId][index] = { t: 'resolved', text };
-  a.status = decision === 'deny' ? 'thinking' : 'working';
-  a.line = decision === 'deny' ? 'Mencari cara tanpa paket baru' : `Menjalankan ${cmd}`;
+  const cmd = state.chats[agentId][index].command.replace(/^\$ /, '');
+  const text = { once: `Diizinkan sekali: ${cmd}`, session: `Diizinkan untuk sesi ini: ${cmd}`, deny: 'Ditolak.' }[decision];
+  state.chats[agentId][index] = { t: 'resolved', text: `${text} (contoh, tidak dikirim ke agent)` };
   render();
 }
 
@@ -113,29 +114,22 @@ document.getElementById('input').addEventListener('keydown', (e) => {
   }
 });
 
+// TODO(Task 8): call interruptAgent. Until then the click says so in the chat.
 document.getElementById('interrupt').addEventListener('click', () => {
-  const a = state.agents.find((x) => x.id === state.selected);
-  a.status = 'idle';
-  a.line = 'Dihentikan';
-  render();
-});
-
-document.getElementById('model').addEventListener('change', (e) => {
-  const a = state.agents.find((x) => x.id === state.selected);
-  a.model = e.target.value;
+  state.chats[state.selected].push({ t: 'resolved', text: 'Interupsi belum terhubung ke agent.' });
   render();
 });
 
 async function load() {
   render();
   try {
+    window.zonder.subscribeAgentEvents(onAgentEvent);
+    state.agents = await window.zonder.listAgents();
+    state.chats = Object.fromEntries(state.agents.map((a) => [a.id, []]));
     if (mock) {
-      state.agents = structuredClone(MOCK_AGENTS);
-      state.chats = structuredClone(MOCK_CHATS);
+      Object.assign(state.chats, structuredClone(MOCK_CHATS));
       state.models = MOCK_MODELS;
       document.getElementById('sampleNote').hidden = false;
-    } else {
-      state.agents = await window.zonder.listAgents();
     }
     state.selected = state.agents[0]?.id ?? null;
   } catch (err) {
