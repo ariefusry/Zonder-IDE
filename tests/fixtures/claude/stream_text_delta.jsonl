@@ -1,0 +1,1 @@
+{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":", two, three, four, five"}},"session_id":"ef6d033a-2ef2-4ba5-b93d-edabdca54057","parent_tool_use_id":null,"uuid":"491961c9-1c56-42bc-9f89-14dc3224d4ce"}

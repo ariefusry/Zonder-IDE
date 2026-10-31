@@ -2,6 +2,7 @@
 // Returns an array of partial events (the agent adds agentId; the store adds ts),
 // a {control} item for permission requests, or [] for anything else.
 //
+// `delta` (streamed text) is forwarded live but never stored.
 // Internal event types the agent consumes and does not forward as-is:
 //   {type:'session', sessionId}, {type:'status', to}, {type:'turn_end', interrupted}
 
@@ -80,6 +81,13 @@ function parseLine(line) {
       return fromUser(msg);
     case 'result':
       return fromResult(msg);
+    case 'stream_event': {
+      // --include-partial-messages: only the main agent's text is streamed;
+      // the full assistant message still follows and replaces it.
+      const e = msg.event;
+      if (msg.parent_tool_use_id || e?.type !== 'content_block_delta' || e.delta?.type !== 'text_delta' || !e.delta.text) return [];
+      return [{ type: 'delta', text: e.delta.text }];
+    }
     case 'control_request':
       if (msg.request?.subtype !== 'can_use_tool') return [];
       return { control: { requestId: msg.request_id, tool: msg.request.tool_name, toolUseId: msg.request.tool_use_id, input: msg.request.input } };

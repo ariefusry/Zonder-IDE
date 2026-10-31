@@ -39,8 +39,7 @@ class Approvals {
 
     const requestId = this.newId();
     return new Promise((resolve) => {
-      this.pending.set(requestId, { agentId, grantKey: d.grantKey, resolve });
-      this.store.emit({
+      const card = {
         type: 'approval_request',
         agentId,
         requestId,
@@ -49,7 +48,9 @@ class Approvals {
         ...(action.path ? { path: action.path } : {}),
         reason: d.reason,
         grantable: Boolean(d.grantKey),
-      });
+      };
+      this.pending.set(requestId, { agentId, grantKey: d.grantKey, resolve, card });
+      this.store.emit(card);
       this.setStatus(agentId, 'approval');
     });
   }
@@ -62,6 +63,11 @@ class Approvals {
     this.finish(requestId, decision, decision === 'deny' ? { behavior: 'deny', message: 'Ditolak oleh pemilik.' } : { behavior: 'allow' });
     const stillWaiting = [...this.pending.values()].some((p) => p.agentId === req.agentId);
     if (!stillWaiting && this.store.get(req.agentId)?.status === 'approval') this.setStatus(req.agentId, 'working');
+  }
+
+  // Open cards for one agent, so a reloaded renderer can show them again.
+  pendingFor(agentId) {
+    return [...this.pending.values()].filter((p) => p.agentId === agentId).map((p) => p.card);
   }
 
   cancel(agentId, message) {

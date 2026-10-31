@@ -33,7 +33,11 @@ const PERMISSION_SETTINGS = {
   },
 };
 
-// Event types kept in the agent's chat history; status changes are not.
+// Aliases, not dated ids, so the list survives model releases. Also the only
+// values setModel accepts: the renderer is not trusted.
+const CLAUDE_MODELS = ['opus', 'sonnet', 'haiku'];
+
+// Event types kept in the agent's chat history; status, delta, queue and model are not.
 const PERSISTED = new Set(['message', 'tool_start', 'tool_end', 'error', 'exit']);
 const STDERR_KEEP = 4000;
 
@@ -43,6 +47,7 @@ function buildArgs(record) {
     '--input-format', 'stream-json',
     '--output-format', 'stream-json',
     '--verbose',
+    '--include-partial-messages',
     '--permission-mode', 'manual',
     '--permission-prompt-tool', 'stdio',
     '--strict-mcp-config',
@@ -163,8 +168,12 @@ class ClaudeAgent {
     if (!this.child) throw new Error('Agen belum berjalan.');
     const queued = this.turnActive;
     this.emitEvent({ type: 'message', role: 'user', text, queued });
-    if (queued) this.queue.push(text);
-    else this.writeUser(text);
+    if (queued) {
+      this.queue.push(text);
+      this.emitQueue();
+    } else {
+      this.writeUser(text);
+    }
   }
 
   respond(requestId, decision, input, message) {
@@ -177,6 +186,14 @@ class ClaudeAgent {
     this.write({ type: 'control_response', response: { subtype: 'success', request_id: requestId, response } });
   }
 
+  setModel(model) {
+    if (!CLAUDE_MODELS.includes(model)) throw new Error(`Model tidak dikenal: ${model}`);
+    this.record.model = model;
+    // A running session switches at its next request; a stopped one picks it up on start.
+    if (this.child) this.write({ type: 'control_request', request_id: `zonder-model-${++this.interrupts}`, request: { subtype: 'set_model', model } });
+    this.emitEvent({ type: 'model', model });
+  }
+
   interrupt() {
     if (!this.child || !this.turnActive) return;
     this.write({ type: 'control_request', request_id: `zonder-int-${++this.interrupts}`, request: { subtype: 'interrupt' } });
@@ -187,7 +204,7 @@ class ClaudeAgent {
     if (!child) return;
     this.child = null;
     this.clearTimers();
-    this.queue = [];
+    this.dropQueue();
     this.pending.clear();
     this.turnActive = false;
     if (child.exitCode === null) {
@@ -259,6 +276,7 @@ class ClaudeAgent {
     this.pending.clear();
     if (this.queue.length) {
       this.writeUser(this.queue.shift());
+      this.emitQueue();
       return;
     }
     if (this.record.status === 'done') {
@@ -296,9 +314,19 @@ class ClaudeAgent {
     if (this.queue.length) {
       const list = this.queue.map((t) => `"${t.length > 80 ? `${t.slice(0, 80)}…` : t}"`).join(', ');
       this.emitEvent({ type: 'error', message: `${this.queue.length} pesan tidak terkirim: ${list}` });
-      this.queue = [];
+      this.dropQueue();
     }
     this.setStatus('error');
+  }
+
+  emitQueue() {
+    this.emitEvent({ type: 'queue', count: this.queue.length });
+  }
+
+  dropQueue() {
+    if (!this.queue.length) return;
+    this.queue = [];
+    this.emitQueue();
   }
 
   clearTimers() {
@@ -331,4 +359,4 @@ class ClaudeAgent {
   }
 }
 
-module.exports = { ClaudeAgent, buildArgs, resolveClaudeExe, killTree, toAction, PERMISSION_SETTINGS };
+module.exports = { ClaudeAgent, buildArgs, resolveClaudeExe, killTree, toAction, CLAUDE_MODELS, PERMISSION_SETTINGS };

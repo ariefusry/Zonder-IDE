@@ -457,3 +457,70 @@ test('with approvals: Junior Write asks the owner, once allows; outside read is 
   assert.match(res.response.message, /checkout utama/);
   assert.equal(events.filter((e) => e.type === 'approval_request').length, 1);
 });
+
+// --- Task 8: streaming, queue count, model switch ---
+
+const { CLAUDE_MODELS } = require('../src/main/agents/claude-agent.js');
+
+test('buildArgs streams partial messages', () => {
+  assert.ok(buildArgs({ model: 'haiku' }).includes('--include-partial-messages'));
+});
+
+test('text deltas are forwarded live but never persisted', async () => {
+  const s = await started();
+  s.agent.send('hitung');
+  await s.line(fixture('stream_text_delta'));
+  const d = s.events.find((e) => e.type === 'delta');
+  assert.equal(d.agentId, 'agent1');
+  assert.equal(d.text, ', two, three, four, five');
+  assert.ok(!s.persisted.some((e) => e.type === 'delta'));
+});
+
+test('queue events report how many messages wait, and drop to 0 as they are sent', async () => {
+  const s = await started();
+  const counts = () => s.events.filter((e) => e.type === 'queue').map((e) => e.count);
+  s.agent.send('satu');
+  s.agent.send('dua');
+  s.agent.send('tiga');
+  assert.deepEqual(counts(), [1, 2]);
+  await s.line(fixture('result_success'));
+  await s.line(fixture('result_success'));
+  assert.deepEqual(counts(), [1, 2, 1, 0]);
+  assert.ok(!s.persisted.some((e) => e.type === 'queue'));
+});
+
+test('queue count resets on stop', async () => {
+  const s = await started();
+  s.agent.send('satu');
+  s.agent.send('dua');
+  await s.agent.stop();
+  assert.equal(s.events.filter((e) => e.type === 'queue').at(-1).count, 0);
+});
+
+test('setModel switches a running session with set_model and updates the record', async () => {
+  const s = await started();
+  s.agent.setModel('sonnet');
+  await tick();
+  const req = parse(s.child.writes[0]);
+  assert.equal(req.type, 'control_request');
+  assert.deepEqual(req.request, { subtype: 'set_model', model: 'sonnet' });
+  assert.equal(s.record.model, 'sonnet');
+  assert.deepEqual(s.events.filter((e) => e.type === 'model').map((e) => e.model), ['sonnet']);
+});
+
+test('setModel on a stopped agent only updates the record for the next start', () => {
+  const s = setup();
+  s.agent.setModel('opus');
+  assert.equal(s.record.model, 'opus');
+  assert.equal(s.child.writes.length, 0);
+  assert.equal(buildArgs(s.record)[buildArgs(s.record).indexOf('--model') + 1], 'opus');
+});
+
+test('setModel refuses models outside the allowlist', async () => {
+  const s = await started();
+  assert.deepEqual(CLAUDE_MODELS, ['opus', 'sonnet', 'haiku']);
+  assert.throws(() => s.agent.setModel('gpt-5'), /model/i);
+  assert.throws(() => s.agent.setModel('--dangerously-skip-permissions'), /model/i);
+  assert.equal(s.record.model, 'haiku');
+  assert.equal(s.child.writes.length, 0);
+});

@@ -1,5 +1,5 @@
 // Renderer entry: state, mock data, and event wiring. Loaded after
-// sidebar.js and chat.js; the helpers below are used at call time.
+// render-message.js, sidebar.js and chat.js; their helpers are used at call time.
 
 const STATUS = {
   starting: { label: 'memulai', color: 'var(--st-idle)' },
@@ -14,6 +14,10 @@ const STATUS = {
 };
 const BUSY = ['thinking', 'working', 'testing'];
 const ACTIVE = [...BUSY, 'approval'];
+// Mirrors CLAUDE_MODELS in claude-agent.js; main rejects anything else.
+const CLAUDE_MODELS = ['opus', 'sonnet', 'haiku'];
+// Event types main writes to history; used to drop live duplicates of history.
+const PERSISTED = ['message', 'tool_start', 'tool_end', 'error', 'exit'];
 
 function el(tag, attrs, ...children) {
   const node = document.createElement(tag);
@@ -22,37 +26,65 @@ function el(tag, attrs, ...children) {
   return node;
 }
 
-// Sample chat content for layout work only (?mock / ZONDER_MOCK=1); the sample
-// agents themselves come from the main-process store. The toolbar says so on screen.
-// TODO(Task 8): real history replaces this via getHistory.
+// Sample chat content for layout work only (?mock / ZONDER_MOCK=1), written as
+// agent events so it goes through the same reducer as real ones. The sample
+// agents come from the main-process store; the toolbar says it is sample data.
 const MOCK_MODELS = ['claude-sonnet-4-6', 'claude-opus-4-7', 'claude-haiku-4-5'];
-const MOCK_CHATS = {
+const MOCK_TS = new Date().setHours(14, 33, 0, 0);
+const MOCK_EVENTS = {
   a1: [
-    { t: 'agent', text: 'Saya mulai dari test suite untuk modul auth.' },
-    { t: 'user', text: 'Tambahkan juga kasus token kedaluwarsa.', time: '14:33' },
-    { t: 'agent', text: 'Siap. Menulis kasusnya:', code: "it('rejects expired token', async () => {\n  const token = sign({}, secret, { expiresIn: -1 });\n  await assert.rejects(verify(token));\n});" },
-    { t: 'tool', tag: 'write', sum: 'src/auth/auth.test.ts', detail: 'Menulis 18 baris ke worktree agent.' },
-    { t: 'tool', tag: 'bash', sum: 'npm run test:auth', detail: '$ npm run test:auth\nberjalan...' },
+    { type: 'message', role: 'agent', text: 'Saya mulai dari test suite untuk modul auth.' },
+    { type: 'message', role: 'user', text: 'Tambahkan juga kasus token kedaluwarsa.', ts: MOCK_TS },
+    { type: 'message', role: 'agent', text: "Siap. Menulis kasusnya:\n```ts\nit('rejects expired token', async () => {\n  const token = sign({}, secret, { expiresIn: -1 });\n  await assert.rejects(verify(token));\n});\n```" },
+    { type: 'tool_start', toolUseId: 'm1', tool: 'Write', summary: 'src/auth/auth.test.ts' },
+    { type: 'tool_end', toolUseId: 'm1', isError: false, output: 'File created successfully at: src/auth/auth.test.ts' },
+    { type: 'tool_start', toolUseId: 'm2', tool: 'Bash', summary: 'npm run test:auth' },
   ],
   a2: [
-    { t: 'user', text: 'Tambahkan validasi input untuk form daftar.', time: '14:20' },
-    { t: 'agent', text: 'Saya pakai zod untuk skema validasi. Paketnya belum terpasang.' },
-    { t: 'approval', command: '$ npm install zod', why: 'Nadia (Junior Developer) ingin memasang paket. Pemasangan paket selalu bertanya.' },
+    { type: 'message', role: 'user', text: 'Tambahkan validasi input untuk form daftar.', ts: MOCK_TS - 780000 },
+    { type: 'message', role: 'agent', text: 'Saya pakai zod untuk skema validasi. Paketnya belum terpasang.' },
+    { type: 'approval_request', requestId: 'mock-r1', tool: 'Bash', summary: 'npm install zod', reason: 'Memasang paket selalu bertanya.', grantable: false },
   ],
   a3: [
-    { t: 'user', text: 'Review perubahan di cabang zonder/raka.', time: '14:25' },
-    { t: 'tool', tag: 'read', sum: 'git diff main...HEAD', detail: 'Hanya baca. Reviewer tidak punya akses tulis.' },
-    { t: 'agent', text: 'Masih membaca perubahan. Belum ada temuan.' },
+    { type: 'message', role: 'user', text: 'Review perubahan di cabang zonder/raka.', ts: MOCK_TS - 480000 },
+    { type: 'tool_start', toolUseId: 'm3', tool: 'Bash', summary: 'git diff main...HEAD' },
+    { type: 'tool_end', toolUseId: 'm3', isError: false, output: ' src/auth/verify.ts | 12 ++++++----\n 1 file changed, 6 insertions(+), 6 deletions(-)' },
+    { type: 'message', role: 'agent', text: 'Masih membaca perubahan. Belum ada temuan.' },
   ],
   a4: [],
 };
 
 const mock = new URLSearchParams(location.search).has('mock');
-const state = { loading: true, error: null, agents: [], chats: {}, models: [], selected: null };
+const state = {
+  loading: true,
+  error: null,
+  mock,
+  agents: [],
+  chats: {},
+  queue: {},
+  expanded: new Set(),
+  answering: new Set(),
+  models: [],
+  selected: null,
+};
 
-function render() {
+const handlers = {
+  onSelect: select,
+  onApproval: answerApproval,
+  onToggleTool: toggleTool,
+  onModel: changeModel,
+};
+
+function chat(id) {
+  if (!state.chats[id]) state.chats[id] = { items: [], loaded: false, loading: false, error: null, buffer: [] };
+  return state.chats[id];
+}
+
+function renderChrome() {
   renderSidebar(state, select);
-  renderChat(state, { onSelect: select, onApproval: resolveApproval });
+  renderTabs(state, handlers);
+  renderHead(state);
+  renderComposer(state, handlers);
 
   const note = document.getElementById('centerNote');
   note.replaceChildren();
@@ -68,31 +100,122 @@ function render() {
   }
 }
 
+function render() {
+  renderChrome();
+  renderMessages(state, handlers);
+}
+
 function select(id) {
   state.selected = id;
+  const c = chat(id);
+  if (!c.loaded && !c.loading) loadHistory(id);
   render();
+  document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
 }
 
-function now() {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+// History first, then open approval cards, then live events that arrived while
+// loading. A live event that is also in history is the same object main
+// stored, so its JSON matches exactly.
+async function loadHistory(id) {
+  const c = chat(id);
+  c.loading = true;
+  try {
+    let items = [];
+    if (mock && MOCK_EVENTS[id]) {
+      items = MOCK_EVENTS[id].map((e) => ({ agentId: id, ...e })).reduce(reduceChat, []);
+    } else {
+      const { events, pending } = await window.zonder.getHistory(id);
+      const seen = new Set(events.map((e) => JSON.stringify(e)));
+      const cards = new Set(pending.map((p) => p.requestId));
+      items = [...events, ...pending].reduce(reduceChat, []);
+      for (const e of c.buffer) {
+        if (PERSISTED.includes(e.type) && seen.has(JSON.stringify(e))) continue;
+        if (e.type === 'approval_request' && cards.has(e.requestId)) continue;
+        items = reduceChat(items, e);
+      }
+    }
+    c.items = items;
+    c.error = null;
+  } catch (err) {
+    c.error = err.message;
+  }
+  c.buffer = [];
+  c.loading = false;
+  c.loaded = !c.error;
+  if (state.selected === id) renderMessages(state, handlers);
 }
 
-// Statuses belong to the main-process store; the renderer only mirrors its events.
+function addLocal(id, evt) {
+  const c = chat(id);
+  c.items = reduceChat(c.items, { agentId: id, ts: Date.now(), ...evt });
+  if (state.selected === id) renderMessages(state, handlers);
+}
+
+function toggleTool(toolUseId) {
+  if (state.expanded.has(toolUseId)) state.expanded.delete(toolUseId);
+  else state.expanded.add(toolUseId);
+  renderMessages(state, handlers);
+}
+
+function answerApproval(agentId, requestId, decision) {
+  if (mock) {
+    addLocal(agentId, { type: 'approval_resolved', requestId, decision });
+    return;
+  }
+  state.answering.add(requestId);
+  renderMessages(state, handlers);
+  // The card closes when main sends approval_resolved.
+  window.zonder.respondApproval(requestId, decision).catch((err) => {
+    state.answering.delete(requestId);
+    addLocal(agentId, { type: 'error', message: `Jawaban izin gagal dikirim: ${err.message}` });
+  });
+}
+
+function changeModel(agentId, model) {
+  window.zonder.setModel(agentId, model).catch((err) => {
+    modelKey = null;
+    renderComposer(state, handlers);
+    addLocal(agentId, { type: 'error', message: `Model gagal diganti: ${err.message}` });
+  });
+}
+
+let refreshing = null;
+// An event for an agent the list does not have yet (spawned after load): fetch the list again.
+function refreshAgents() {
+  refreshing ??= window.zonder.listAgents().then((list) => {
+    for (const rec of list) if (!state.agents.some((a) => a.id === rec.id)) state.agents.push(rec);
+    if (!state.selected && state.agents.length) select(state.agents[0].id);
+    else renderChrome();
+  }).catch(() => {}).finally(() => { refreshing = null; });
+}
+
+// Statuses, models and queues belong to main; the renderer only mirrors its events.
 function onAgentEvent(evt) {
   const a = state.agents.find((x) => x.id === evt.agentId);
-  if (!a || evt.type !== 'status') return;
-  a.status = evt.to;
-  render();
-}
+  if (!a) refreshAgents();
+  if (evt.type === 'status' && a) a.status = evt.to;
+  if (evt.type === 'model' && a) a.model = evt.model;
+  if (evt.type === 'queue') state.queue[evt.agentId] = evt.count;
+  if (evt.type === 'approval_resolved') state.answering.delete(evt.requestId);
 
-// Sample cards only. The decision is not sent anywhere and the agent's status
-// does not change. TODO(Task 8): real cards call window.zonder.respondApproval.
-function resolveApproval(agentId, index, decision) {
-  const cmd = state.chats[agentId][index].command.replace(/^\$ /, '');
-  const text = { once: `Diizinkan sekali: ${cmd}`, session: `Diizinkan untuk sesi ini: ${cmd}`, deny: 'Ditolak.' }[decision];
-  state.chats[agentId][index] = { t: 'resolved', text: `${text} (contoh, tidak dikirim ke agent)` };
-  render();
+  const c = chat(evt.agentId);
+  let changed = false;
+  if (c.loaded) {
+    const before = c.items;
+    c.items = reduceChat(c.items, evt);
+    changed = before !== c.items;
+  } else if (evt.type !== 'delta') {
+    // Deltas are dropped: the full message that replaces them is in history.
+    c.buffer.push(evt);
+  }
+
+  const shown = state.selected === evt.agentId;
+  if (evt.type === 'delta') {
+    if (shown && changed && !updateStream(state)) renderMessages(state, handlers);
+    return;
+  }
+  if (['status', 'model', 'queue'].includes(evt.type)) renderChrome();
+  if (shown && (changed || evt.type === 'queue')) renderMessages(state, handlers);
 }
 
 document.getElementById('composer').addEventListener('submit', (e) => {
@@ -101,10 +224,16 @@ document.getElementById('composer').addEventListener('submit', (e) => {
   const text = input.value.trim();
   const a = state.agents.find((x) => x.id === state.selected);
   if (!text || !a) return;
-  // TODO(Task 9): send through window.zonder.sendMessage for real agents.
-  state.chats[a.id].push({ t: 'user', text, time: now(), queued: ACTIVE.includes(a.status) });
-  input.value = '';
-  render();
+  if (mock) {
+    addLocal(a.id, { type: 'message', role: 'user', text });
+    input.value = '';
+    return;
+  }
+  // The bubble appears when the agent's message event comes back.
+  window.zonder.sendMessage(a.id, text).then(
+    () => { if (input.value.trim() === text) input.value = ''; },
+    (err) => addLocal(a.id, { type: 'error', message: `Pesan tidak terkirim: ${err.message}` }),
+  );
 });
 
 document.getElementById('input').addEventListener('keydown', (e) => {
@@ -114,29 +243,30 @@ document.getElementById('input').addEventListener('keydown', (e) => {
   }
 });
 
-// TODO(Task 8): call interruptAgent. Until then the click says so in the chat.
 document.getElementById('interrupt').addEventListener('click', () => {
-  state.chats[state.selected].push({ t: 'resolved', text: 'Interupsi belum terhubung ke agent.' });
-  render();
+  const id = state.selected;
+  if (mock) {
+    addLocal(id, { type: 'error', message: 'Agent contoh tidak bisa diinterupsi.' });
+    return;
+  }
+  window.zonder.interruptAgent(id).catch((err) => addLocal(id, { type: 'error', message: `Interupsi gagal: ${err.message}` }));
 });
 
 async function load() {
-  render();
+  renderChrome();
   try {
     window.zonder.subscribeAgentEvents(onAgentEvent);
     state.agents = await window.zonder.listAgents();
-    state.chats = Object.fromEntries(state.agents.map((a) => [a.id, []]));
     if (mock) {
-      Object.assign(state.chats, structuredClone(MOCK_CHATS));
       state.models = MOCK_MODELS;
       document.getElementById('sampleNote').hidden = false;
     }
-    state.selected = state.agents[0]?.id ?? null;
   } catch (err) {
     state.error = err.message;
   }
   state.loading = false;
-  render();
+  if (state.agents.length) select(state.agents[0].id);
+  else render();
 }
 
 load();

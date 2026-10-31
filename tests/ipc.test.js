@@ -69,3 +69,52 @@ test('respondApproval rejects bad ids, decisions and argument counts', async () 
   await assert.rejects(call('req-1', 'once', 'extra'), /arguments/);
   assert.equal(got.length, 0);
 });
+
+// --- Task 8: chat channels ---
+
+function chatSetup() {
+  const handlers = {};
+  const store = new AgentStore();
+  store.add({ id: 'agent01', name: 'Raka', status: 'idle' });
+  store.add({ id: 'sample1', name: 'Contoh', status: 'idle' });
+  const calls = [];
+  const agent = {
+    send: (t) => calls.push(['send', t]),
+    interrupt: () => calls.push(['interrupt']),
+    setModel: (m) => calls.push(['setModel', m]),
+  };
+  const persistence = { loadHistory: (id) => [{ agentId: id, ts: 1, type: 'message', role: 'user', text: 'hai' }] };
+  const approvals = { respond() {}, pendingFor: (id) => [{ agentId: id, type: 'approval_request', requestId: 'r1' }] };
+  registerIpc({ ipcMain: { handle: (ch, fn) => { handlers[ch] = fn; } }, store, getWindow: () => null, approvals, persistence, agents: new Map([['agent01', agent]]) });
+  const call = (ch, ...args) => handlers[ch]({}, ...args);
+  return { calls, call };
+}
+
+test('getHistory returns stored events plus open approval cards', async () => {
+  const { call } = chatSetup();
+  const res = await call(CHANNELS.getHistory, 'agent01');
+  assert.equal(res.events[0].text, 'hai');
+  assert.equal(res.pending[0].requestId, 'r1');
+});
+
+test('sendMessage, interruptAgent and setModel reach the running agent', async () => {
+  const { calls, call } = chatSetup();
+  await call(CHANNELS.sendMessage, 'agent01', 'tulis tes');
+  await call(CHANNELS.interruptAgent, 'agent01');
+  await call(CHANNELS.setModel, 'agent01', 'sonnet');
+  assert.deepEqual(calls, [['send', 'tulis tes'], ['interrupt'], ['setModel', 'sonnet']]);
+});
+
+test('chat channels reject unknown or malformed agent ids and bad payloads', async () => {
+  const { calls, call } = chatSetup();
+  const rejects = (fn, re) => assert.rejects(async () => fn(), re);
+  await rejects(() => call(CHANNELS.getHistory, '../x'), /agentId/);
+  await rejects(() => call(CHANNELS.getHistory, 'ghost01'), /tidak dikenal/);
+  await rejects(() => call(CHANNELS.sendMessage, 'sample1', 'hai'), /belum berjalan/);
+  await rejects(() => call(CHANNELS.sendMessage, 'agent01', ''), /text/);
+  await rejects(() => call(CHANNELS.sendMessage, 'agent01', 'x'.repeat(100001)), /text/);
+  await rejects(() => call(CHANNELS.sendMessage, 'agent01', { text: 'x' }), /text/);
+  await rejects(() => call(CHANNELS.setModel, 'agent01', 'gpt-5'), /model/i);
+  await rejects(() => call(CHANNELS.interruptAgent, 'agent01', 'extra'), /arguments/);
+  assert.equal(calls.length, 0);
+});

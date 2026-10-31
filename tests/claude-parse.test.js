@@ -101,3 +101,11 @@ test('tool_result content given as an array of text blocks is joined', () => {
   const line = JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }] }] } });
   assert.equal(parseLine(line)[0].output, 'a\nb');
 });
+
+test('a top-level text_delta stream_event becomes a delta', () => {
+  assert.deepEqual(one('stream_text_delta'), [{ type: 'delta', text: ', two, three, four, five' }]);
+});
+
+test('other stream_events (thinking, signature, tool input json, subagent text, start/stop) are ignored', () => {
+  for (const line of fixture('stream_ignored')) assert.deepEqual(parseLine(line), [], line.slice(0, 90));
+});

@@ -175,3 +175,15 @@ test('an ask while the agent is idle still emits the request (status stays legal
   s.approvals.handle('a1', write(), s.ctx);
   assert.equal(s.requests().length, 1);
 });
+
+test('pendingFor returns the open cards of one agent, for a renderer that reloads', async () => {
+  const s = setup();
+  s.approvals.handle('a1', write('a'), s.ctx);
+  s.approvals.handle('a2', write('b'), s.ctx);
+  const p = s.approvals.handle('a1', write('c'), s.ctx);
+  s.approvals.respond('req-3', 'once');
+  await p;
+  const cards = s.approvals.pendingFor('a1');
+  assert.deepEqual(cards.map((c) => [c.type, c.requestId, c.summary]), [['approval_request', 'req-1', 'a']]);
+  assert.deepEqual(s.approvals.pendingFor('nobody'), []);
+});

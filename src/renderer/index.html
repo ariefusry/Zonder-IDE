@@ -40,7 +40,7 @@
     <form class="composer" id="composer">
       <textarea id="input" rows="2" placeholder="Pesan untuk agent..." aria-label="Pesan untuk agent"></textarea>
       <div class="comp-row">
-        <select id="model" aria-label="Model agent (ganti model belum tersedia)" title="Ganti model belum tersedia"></select>
+        <select id="model" aria-label="Model agent"></select>
         <span class="q" id="queue"></span>
         <div class="sp">
           <button type="button" class="btn" id="interrupt" hidden>Interupsi</button>
@@ -58,6 +58,7 @@
   <span class="r">RTK <b>&#8212;</b></span>
 </footer>
 
+<script src="render-message.js"></script>
 <script src="sidebar.js"></script>
 <script src="chat.js"></script>
 <script src="app.js"></script>
