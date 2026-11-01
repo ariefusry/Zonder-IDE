@@ -68,6 +68,8 @@ const state = {
   selected: null,
   // Last /models result from main; never holds the key.
   router: null,
+  // Names of the roles that exist now; null until loaded (and in mock mode).
+  roleNames: null,
 };
 
 const handlers = {
@@ -320,7 +322,10 @@ async function load() {
   state.loading = false;
   if (state.agents.length) select(state.agents[0].id);
   else render();
-  if (!mock) checkOrphans();
+  if (!mock) {
+    checkOrphans();
+    window.zonder.listRoles().then(setRoleNames, () => {});
+  }
 }
 
 load();

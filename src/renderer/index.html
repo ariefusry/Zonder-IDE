@@ -170,7 +170,57 @@
           <button type="button" class="btn" id="ccCheck">Periksa ulang</button>
         </div>
       </section>
-      <section class="set-pane" id="set-roles" hidden><h1>Roles</h1><p class="set-sub">Diisi di tugas berikutnya.</p></section>
+      <section class="set-pane set-wide" id="set-roles" hidden>
+        <h1>Roles</h1>
+        <p class="set-sub">Persona dan izin tiap peran. Perubahan berlaku untuk agent yang dibuat setelahnya; agent yang sedang berjalan tetap memakai aturan saat ia dibuat.</p>
+        <div class="role-layout">
+          <div class="role-side">
+            <div class="role-list" id="roleList" aria-label="Daftar peran"></div>
+            <button type="button" class="btn" id="roleAdd">Tambah peran</button>
+          </div>
+          <form class="set-card role-editor" id="roleForm" novalidate hidden>
+            <h2 class="role-title" id="roleTitle"></h2>
+            <label class="field">Nama
+              <input id="roleName" type="text" maxlength="40" autocomplete="off" spellcheck="false">
+              <span class="hint" id="roleNameHint"></span>
+            </label>
+            <label class="field">Persona
+              <textarea id="rolePersona" rows="10" maxlength="20000" spellcheck="false"></textarea>
+              <span class="hint">Ditambahkan ke prompt agent. Izin di bawah tetap ditegakkan Zonder, apa pun isi persona.</span>
+            </label>
+            <div class="field-row">
+              <label class="field">Tulis file
+                <select id="roleWrite">
+                  <option value="deny">Tidak boleh</option>
+                  <option value="tests">Hanya file tes</option>
+                  <option value="ask">Tanya dulu</option>
+                  <option value="allow">Langsung</option>
+                </select>
+              </label>
+              <label class="field">Shell
+                <select id="roleShell">
+                  <option value="deny">Tidak boleh</option>
+                  <option value="ask">Tanya dulu</option>
+                  <option value="auto">Otomatis untuk tes &amp; Git baca</option>
+                </select>
+              </label>
+            </div>
+            <div id="roleSkills" hidden></div>
+            <p class="role-note">Selalu berlaku untuk semua peran: file kredensial, checkout utama, dan apa pun di luar worktree agent diblokir, begitu juga force push dan menulis ulang riwayat Git. Pasang paket, git push, dan hapus selalu bertanya.</p>
+            <p class="form-error" id="roleError" role="alert" hidden></p>
+            <div class="role-confirm" id="roleConfirm" hidden>
+              <span id="roleConfirmText"></span>
+              <button type="button" class="btn" id="roleConfirmNo">Batal</button>
+              <button type="button" class="btn btn-danger" id="roleConfirmYes">Hapus</button>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn btn-danger" id="roleDelete">Hapus peran</button>
+              <button type="button" class="btn" id="roleReset">Kembalikan ke default</button>
+              <button type="submit" class="btn btn-primary" id="roleSave">Simpan</button>
+            </div>
+          </form>
+        </div>
+      </section>
       <section class="set-pane" id="set-skills" hidden><h1>Skills</h1><p class="set-sub">Diisi di tugas berikutnya.</p></section>
       <section class="set-pane" id="set-agent" hidden><h1>Agent</h1><p class="set-sub">Diisi di tugas berikutnya.</p></section>
       <section class="set-pane" id="set-workspace" hidden><h1>Workspace</h1><p class="set-sub">Diisi di tugas berikutnya.</p></section>

@@ -29,7 +29,7 @@ function renderHead(state, handlers) {
   if (!a) return;
   const st = el('span', { class: 'st' }, STATUS[a.status].label);
   st.style.setProperty('--c', STATUS[a.status].color);
-  head.append(el('b', {}, a.name), st, el('span', { class: 'role' }, a.role));
+  head.append(el('b', {}, a.name), st, el('span', { class: 'role' }, roleDeleted(state, a) ? `${a.role} (peran dihapus)` : a.role));
   if (!a.sample && (a.status === 'stopped' || a.status === 'error')) {
     const resume = el('button', { class: 'btn btn-primary btn-resume' }, state.resuming === a.id ? 'Menyalakan...' : 'Lanjutkan');
     resume.disabled = state.resuming === a.id;

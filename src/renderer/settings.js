@@ -85,6 +85,7 @@ function showSettingsSection(section) {
     if (btn.dataset.section === section) btn.setAttribute('aria-current', 'page');
     else btn.removeAttribute('aria-current');
   }
+  if (section === 'roles') loadRoles();
   if (section === 'providers') {
     showRouterError('');
     setField('rkUrl').value = '';
@@ -128,6 +129,7 @@ function initSettings() {
     if (e.key === 'Escape' && !setField('settings').hidden && !document.querySelector('dialog[open]')) closeSettings();
   });
   setField('ccCheck').addEventListener('click', checkClaudeStatus);
+  initRolesPane();
 
   const url = setField('rkUrl');
   const input = setField('rkKey');
@@ -159,5 +161,196 @@ function initSettings() {
     }
     save.disabled = false;
     save.textContent = 'Simpan dan periksa';
+  });
+}
+
+// Roles pane (settings spec §4.3). Main validates and stores; this pane only
+// edits one role at a time. A new role exists only once it is saved.
+const rolesUi = { list: null, error: null, loading: false, current: null, isNew: false, dirty: false, pendingSwitch: null, confirm: null, busy: false };
+
+function setRoleNames(list) {
+  state.roleNames = new Set(list.map((r) => r.name));
+  renderChrome();
+}
+
+async function loadRoles(selectName) {
+  rolesUi.loading = true;
+  rolesUi.error = null;
+  renderRoleList();
+  try {
+    rolesUi.list = await window.zonder.listRoles();
+    setRoleNames(rolesUi.list);
+  } catch (err) {
+    rolesUi.error = ipcMessage(err);
+  }
+  rolesUi.loading = false;
+  const keep = selectName ?? (rolesUi.isNew ? null : rolesUi.current?.name);
+  const next = rolesUi.list?.find((r) => r.name === keep) ?? (rolesUi.isNew ? null : rolesUi.list?.[0]);
+  if (next) editRole(next);
+  else if (!rolesUi.isNew) setField('roleForm').hidden = true;
+  renderRoleList();
+}
+
+function renderRoleList() {
+  const box = setField('roleList');
+  box.replaceChildren();
+  if (rolesUi.loading && !rolesUi.list) {
+    box.append(el('p', { class: 'hint' }, 'Memuat peran...'));
+    return;
+  }
+  if (rolesUi.error) {
+    const retry = el('button', { type: 'button', class: 'btn' }, 'Coba lagi');
+    retry.addEventListener('click', () => loadRoles());
+    box.append(el('p', { class: 'form-error' }, `Peran gagal dimuat: ${rolesUi.error}`), retry);
+    return;
+  }
+  for (const r of rolesUi.list ?? []) {
+    const current = !rolesUi.isNew && rolesUi.current?.name === r.name;
+    const item = el('button', { type: 'button', class: 'role-item', 'aria-current': current ? 'true' : null },
+      el('span', { class: 'nm' }, r.name),
+      ...(r.builtin ? [el('span', { class: 'tag' }, 'bawaan')] : []));
+    item.addEventListener('click', () => switchRole(r));
+    box.append(item);
+  }
+  if (rolesUi.isNew) box.append(el('div', { class: 'role-item', 'aria-current': 'true' }, el('span', { class: 'nm' }, 'Peran baru')));
+}
+
+function showRoleError(text) {
+  const box = setField('roleError');
+  box.textContent = text || '';
+  box.hidden = !text;
+}
+
+function showRoleConfirm(confirm) {
+  rolesUi.confirm = confirm;
+  setField('roleConfirm').hidden = !confirm;
+  if (confirm) {
+    setField('roleConfirmText').textContent = confirm.text;
+    setField('roleConfirmYes').textContent = confirm.yes;
+    setField('roleConfirmYes').focus();
+  }
+}
+
+// Switching away from unsaved edits asks once, inline.
+function switchRole(role) {
+  if (rolesUi.busy) return;
+  if (rolesUi.dirty) {
+    showRoleConfirm({ text: 'Perubahan belum disimpan.', yes: 'Buang perubahan', run: () => (role ? editRole(role) : newRole()) });
+    return;
+  }
+  if (role) editRole(role);
+  else newRole();
+}
+
+function fillRoleForm(role) {
+  const builtin = Boolean(role.builtin);
+  setField('roleForm').hidden = false;
+  setField('roleTitle').textContent = rolesUi.isNew ? 'Peran baru' : role.name;
+  setField('roleName').value = role.name;
+  setField('roleName').readOnly = builtin;
+  setField('roleNameHint').textContent = builtin ? 'Nama peran bawaan tidak bisa diubah.' : 'Paling banyak 40 karakter.';
+  setField('rolePersona').value = role.persona;
+  setField('roleWrite').value = role.write;
+  setField('roleShell').value = role.shell;
+  setField('roleDelete').hidden = builtin || rolesUi.isNew;
+  setField('roleReset').hidden = !builtin;
+  showRoleError('');
+  showRoleConfirm(null);
+  rolesUi.dirty = false;
+  renderRoleList();
+}
+
+function editRole(role) {
+  rolesUi.isNew = false;
+  rolesUi.current = role;
+  fillRoleForm(role);
+}
+
+function newRole() {
+  rolesUi.isNew = true;
+  rolesUi.current = { name: '', builtin: false, persona: '', write: 'ask', shell: 'ask', skills: [], disableSkills: false };
+  fillRoleForm(rolesUi.current);
+  setField('roleName').focus();
+}
+
+function setRoleBusy(busy, label) {
+  rolesUi.busy = busy;
+  for (const id of ['roleSave', 'roleDelete', 'roleReset', 'roleAdd', 'roleConfirmYes', 'roleConfirmNo']) setField(id).disabled = busy;
+  setField('roleSave').textContent = busy && label ? label : 'Simpan';
+}
+
+async function roleAction(label, fn) {
+  setRoleBusy(true, label);
+  showRoleError('');
+  try {
+    const name = await fn();
+    rolesUi.isNew = false;
+    rolesUi.dirty = false;
+    await loadRoles(name);
+  } catch (err) {
+    showRoleError(ipcMessage(err));
+  }
+  setRoleBusy(false);
+}
+
+function initRolesPane() {
+  const form = setField('roleForm');
+  form.addEventListener('input', () => { rolesUi.dirty = true; });
+  setField('roleAdd').addEventListener('click', () => switchRole(null));
+  setField('roleConfirmNo').addEventListener('click', () => showRoleConfirm(null));
+  setField('roleConfirmYes').addEventListener('click', () => {
+    const c = rolesUi.confirm;
+    showRoleConfirm(null);
+    rolesUi.dirty = false;
+    c?.run();
+  });
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (rolesUi.busy) return;
+    const cur = rolesUi.current;
+    const name = setField('roleName').value.trim();
+    if (!name) {
+      showRoleError('Isi nama peran.');
+      setField('roleName').focus();
+      return;
+    }
+    const role = {
+      name,
+      persona: setField('rolePersona').value,
+      write: setField('roleWrite').value,
+      shell: setField('roleShell').value,
+      skills: cur.skills ?? [],
+      disableSkills: Boolean(cur.disableSkills),
+    };
+    // Renaming a custom role saves it under the new name, then removes the old one.
+    const renamed = !rolesUi.isNew && !cur.builtin && name !== cur.name;
+    roleAction('Menyimpan...', async () => {
+      const saved = await window.zonder.saveRole({ ...role, isNew: rolesUi.isNew || renamed });
+      if (renamed) await window.zonder.deleteRole(cur.name);
+      return saved.name;
+    });
+  });
+
+  setField('roleDelete').addEventListener('click', () => {
+    const cur = rolesUi.current;
+    showRoleConfirm({
+      text: `Hapus peran "${cur.name}"? Agent yang sedang memakainya tetap memakai aturan saat ia dibuat.`,
+      yes: 'Hapus',
+      run: () => roleAction('Menghapus...', async () => {
+        await window.zonder.deleteRole(cur.name);
+        rolesUi.current = null;
+        return null;
+      }),
+    });
+  });
+
+  setField('roleReset').addEventListener('click', () => {
+    const cur = rolesUi.current;
+    showRoleConfirm({
+      text: `Kembalikan persona dan izin "${cur.name}" ke default?`,
+      yes: 'Kembalikan',
+      run: () => roleAction('Mengembalikan...', async () => (await window.zonder.resetRole(cur.name)).name),
+    });
   });
 }

@@ -47,24 +47,25 @@ function setSpawnBusy(busy) {
 async function openSpawnModal() {
   const dialog = spawnField('spawnDialog');
   setSpawnError('');
-  if (!spawnUi.options) {
-    try {
-      spawnUi.options = await window.zonder.spawnOptions();
-    } catch (err) {
-      setSpawnError(`Pilihan spawn gagal dimuat: ${err.message}`);
-    }
+  // Roles change in Settings, so the options are fetched again on every open.
+  try {
+    spawnUi.options = await window.zonder.spawnOptions();
+  } catch (err) {
+    setSpawnError(`Pilihan spawn gagal dimuat: ${err.message}`);
   }
   const o = spawnUi.options;
   if (o) {
     const role = spawnField('spRole');
-    if (!role.options.length) {
-      fillSelect(role, o.roles.map((r) => r.role), 'Junior Developer');
+    const names = o.roles.map((r) => r.role);
+    const keep = names.includes(role.value) ? role.value : 'Junior Developer';
+    if (!spawnField('spKind').options.length) {
       spawnField('spKind').replaceChildren(...o.kinds.map((k) => el('option', { value: k }, KIND_LABELS[k] ?? k)));
       fillSelect(spawnField('spModel'), o.models, 'sonnet');
     }
+    fillSelect(role, names, keep);
     // form.reset() puts the kind back to its first option; the model list must follow.
     applyKind();
-    if (!spawnField('spPrompt').value) applyRolePrompt();
+    applyRolePrompt();
   }
   renderWorkspace();
   dialog.showModal();

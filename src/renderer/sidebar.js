@@ -1,6 +1,12 @@
 // Left column: agent cards. Also owns the office legend and status bar count,
 // since all three are summaries of the same agent list.
 
+// A role deleted after spawn: flagged on resume by main, or missing from the
+// current role list while the agent still runs on its own copy of the rules.
+function roleDeleted(state, a) {
+  return Boolean(a.roleDeleted || (!a.sample && state.roleNames && a.role && !state.roleNames.has(a.role)));
+}
+
 function renderSidebar(state, onSelect) {
   const list = document.getElementById('agentList');
   list.replaceChildren();
@@ -19,6 +25,7 @@ function renderSidebar(state, onSelect) {
       el('span', { class: 'dot' }),
       el('span', { class: 'nm' }, a.name),
       el('span', { class: 'md' }, a.model),
+      el('span', { class: 'rl' }, roleDeleted(state, a) ? `${a.role}, peran dihapus` : a.role),
       el('span', { class: 'stt' }, a.line ? `${st.label}: ${a.line}` : st.label),
     );
     card.style.setProperty('--c', st.color);
