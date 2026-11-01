@@ -354,7 +354,7 @@ Mapping inside `decide`: `write: 'deny'` = today's READ_ONLY file branch; `'test
 
 ### Task 20: Living office
 
-**Spec:** `docs/superpowers/specs/2026-11-01-zonder-office-life-design.md` (amends §7 of the main design). Style reference: mockup B in `.superpowers/brainstorm/1761-1793518470/content/office-style.html` (front view; translate to the existing isometric projection).
+**Spec:** `docs/superpowers/specs/2026-11-01-zonder-office-life-design.md` (amends §7 of the main design). Style reference: Isoglow-style prototype in `.superpowers/brainstorm/office-isoglow/office-isoglow.html` (same projection and floor plan as the app; fine 1px lines on neutral grey, only in-use equipment glows in its agent's status colour).
 
 **Files:**
 - Create: `src/renderer/office/look.js`, `src/renderer/office/furniture.js`, `tests/office-look.test.js`
@@ -365,7 +365,7 @@ Mapping inside `decide`: `write: 'deny'` = today's READ_ONLY file branch; `'test
 - Produces (`look.js`, same IIFE + `module.exports` guard as `map.js`):
   - `POSES = ['type', 'board', 'sip', 'raise', 'qa', 'lounge', 'facepalm', 'walk']`.
   - `poseFor(status: string, { walking: boolean, seated: boolean }) -> { pose: POSES[n], standing: boolean, mark: 'dots' | 'alert' | 'check' | 'error' | null }`.
-  - `appearanceFor(agentId: string) -> { skin: string, hair: string, hairStyle: 0 | 1 | 2 }`: deterministic hash of the id into fixed palettes of at least 5 skins and 5 hair colours.
+  - `appearanceFor(agentId: string) -> { hair: string, hairStyle: 0 | 1 | 2 }`: deterministic hash of the id into a fixed palette of at least 5 neutral grey hair tones.
   - `phase(tMs: number, periodMs: number, offset = 0) -> number` in `[0, 1)`.
 - `OfficeCharacters.avatarLook(status)` keeps returning `{ flag }` (existing tests stay).
 
@@ -381,11 +381,12 @@ Status to pose (spec §4.1): working → `type`, mark null; thinking → `board`
   - `phase(0,1000)=0, phase(250,1000)=0.25, phase(1250,1000)=0.25, phase(0,1000,0.5)=0.5`
 - [ ] **Step 2: Run `npm test`.** Expected: new tests fail; existing office tests pass.
 - [ ] **Step 3: Implement `look.js`** to the interfaces above.
-- [ ] **Step 4: Tokens.** Add `--office-*` colour tokens to `styles.css` (wood light/dark, wall, floor, plant light/dark, whiteboard cream, mug, sofa, screen glow, orange accent), taken from mockup B. Office code reads them through the existing `token()` helper; no hex literals in office JS.
+- [ ] **Step 4: Tokens.** Add neutral `--office-*` tokens to `styles.css`, values from the prototype: `--office-floor`, `--office-body` (sides), `--office-deck` (tops), `--office-line` (1px edges), `--office-detail` (fine detail lines), `--office-glass` (screen off). No other hues: status colours come only from `--st-*`. Office code reads them through the existing `token()` helper; no hex literals in office JS.
 - [ ] **Step 5: `furniture.js`.**
   - One draw function per piece in spec §4.3: desk with monitor and keyboard, office chair, round meeting table and chairs, whiteboard with scribbles, QA station with two screens, sofa and side table, coffee bar with machine and cups, potted plant, bookshelf, window, wall clock.
   - Pieces draw in iso space from `FURNITURE` entries.
-  - Rounded flat shapes, no gradients.
+  - Iso boxes with 1px `--office-line` edges and fine `--office-detail` lines, no gradients.
+  - Glow (`shadowBlur` in the status colour) only on equipment an agent is using: desk screen (working blue, error red), whiteboard (thinking), QA screens (testing), meeting-table signal lamp (approval, pulsing). Unused equipment stays unlit.
   - Animated parts (screens, plant sway, clock hands, steam) are separate functions that take `t`.
 - [ ] **Step 6: `office.js` render loop.**
   - The static room (floor, walls, non-animated furniture) renders once to an offscreen canvas and again only on resize.
@@ -393,7 +394,7 @@ Status to pose (spec §4.1): working → `type`, mark null; thinking → `board`
   - Frames are capped at 30 fps using `dt` in real time.
   - The loop stops when `document.hidden` or when the canvas is not displayed (`canvas.offsetParent === null`, e.g. Settings open), and resumes on `visibilitychange` / display.
 - [ ] **Step 7: Avatars.**
-  - Draw each pose from `poseFor` in style B: round head, rounded body, status-colour shirt (`--st-*`), and skin/hair from `appearanceFor`.
+  - Draw each pose from `poseFor` in the line style: neutral head, rounded body with a translucent status-colour fill and status-colour outline (`--st-*`), hair from `appearanceFor`. Avatars slightly larger than in the prototype so poses read.
   - Walking swings arms and legs. Idle breath is 1 px; blinks every 3–6 s per agent, offset by id.
   - Marks: three blinking dots, a pulsing yellow "!" (largest, so approval stands out most), a small green check, a red "!" with a red monitor.
   - Standing variants apply on overflow tiles.

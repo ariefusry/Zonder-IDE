@@ -82,13 +82,13 @@ Tema: hanya gelap, permintaan pemilik. Tidak ada tombol tema, jadi tidak ada mod
 
 ## Kantor isometrik
 
-- Lantai dan furnitur: bentuk geometris solid dari keluarga `--surface` / `--surface-2`, tepi lebih terang 1px. Tanpa gradien atau tekstur.
-- Warna cerah dicadangkan untuk avatar dan titik status. Avatar: bentuk sederhana warna status, nama kecil, cincin `--accent-text` bila terpilih. Status `error` memakai penanda merah tegas di mejanya.
+- Gaya garis tipis ala Isoglow (pilihan pemilik, 2026-11-01; spec `docs/superpowers/specs/2026-11-01-zonder-office-life-design.md`): lantai dan perabot abu netral dari token `--office-*`, tepi 1px, garis detail tipis. Tanpa gradien atau tekstur.
+- Warna cerah dicadangkan untuk status. Peralatan yang sedang dipakai agent menyala (pendar `shadowBlur`) dalam warna status agent itu; yang tidak dipakai redup. Avatar: baju warna status, nama kecil, cincin `--accent-text` bila terpilih. Status `error` membuat layar mejanya merah.
 - Berjalan antar zona lewat jalur grid; berhenti saat jendela disembunyikan.
 
 ## Yang sengaja dihindari
 
-Gradien dan cahaya ungu/biru di sekitar UI, glow, glassmorphism, lencana kapsul, emoji sebagai ikon, ikon "sparkle/AI", panah dekoratif, grid latar, teks "Get Started/Learn More". Placeholder wajib berlabel (R-23/R-38); tidak ada avatar, angka, atau statistik karangan. Fitur tampil di UI hanya bila berfungsi (Kanban, Canvas, Wiki, Docker, dan Attach milik Sokudo tidak ada di Zonder).
+Gradien dan cahaya ungu/biru di sekitar UI, glow (kecuali pendar status di kantor), glassmorphism, lencana kapsul, emoji sebagai ikon, ikon "sparkle/AI", panah dekoratif, grid latar, teks "Get Started/Learn More". Placeholder wajib berlabel (R-23/R-38); tidak ada avatar, angka, atau statistik karangan. Fitur tampil di UI hanya bila berfungsi (Kanban, Canvas, Wiki, Docker, dan Attach milik Sokudo tidak ada di Zonder).
 
 ## Ikon
 

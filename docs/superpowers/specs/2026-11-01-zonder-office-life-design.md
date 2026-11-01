@@ -6,7 +6,7 @@ Tanggal: 2026-11-01. Mengganti sebagian §7 `2026-11-01-zonder-design.md` (kanto
 
 Pemilik merasa kantor sekarang kurang hidup: "hanya kotak-kotak dan orang yang berjalan ke kotak". Ia ingin melihat sekilas dan langsung paham apa yang sedang dikerjakan tiap agent, dari pose dan perabot yang terasa nyata. Contohnya, saat bekerja agent duduk di depan komputer, saat berpikir ia di ruang rapat, dan saat santai ia minum kopi.
 
-Pemilik memilih gaya **ilustrasi datar (vektor)**: bentuk halus dan membulat, perabot lebih detail. Ia menolak gaya pixel art. Mockup yang dipilih ada di `.superpowers/brainstorm/1761-1793518470/content/office-style.html`, opsi B. Mockup itu acuan gaya dan pose, bukan tata ruang, karena digambar dari depan, bukan isometrik.
+Pemilik memilih gaya **garis tipis isometrik ala [Isoglow](https://isoglow.dev/)** (keputusan 2026-11-01, menggantikan pilihan awal gaya B ilustrasi datar). Ruangan dan perabot berwarna abu netral gelap dengan garis tepi 1px; warna hanya muncul dari status: peralatan yang sedang dipakai agent menyala dalam warna status itu, yang tidak dipakai tetap redup. Alasannya: status terbaca sekilas karena warna tidak bersaing dengan warna perabot, dan kantor menyatu dengan app yang hitam netral (DESIGN.md). Ia menolak gaya pixel art. Prototipe acuan ada di `.superpowers/brainstorm/office-isoglow/office-isoglow.html`, dengan proyeksi dan denah yang sama seperti kantor sekarang. Yang ditiru dari Isoglow hanya bahasa visualnya (garis tipis, permukaan gelap, bagian yang hidup berpendar), bukan kode atau asetnya.
 
 ## 2. Tujuan, bukan-tujuan, anti-tujuan
 
@@ -30,8 +30,9 @@ Pemilik memilih gaya **ilustrasi datar (vektor)**: bentuk halus dan membulat, pe
 
 - Canvas 2D, `requestAnimationFrame`, tanpa dependensi baru, tanpa file aset. Proyeksi, pathfinding, peta zona dan kursi (`iso.js`, `pathfinder.js`, `map.js`) tetap dipakai; tes yang ada tetap lulus.
 - Status dan zona tetap berasal dari event proses yang nyata (`STATUS_TO_ZONE`).
-- Warna status dari token `--st-*` yang sudah ada. Perabot dan ruangan memakai palet benda nyata seperti di mockup B (kayu coklat, hijau tanaman, papan tulis krem, aksen oranye), didefinisikan sebagai token CSS baru `--office-*` di `styles.css`, bukan hex lepas di kode kantor.
-- **Baju avatar berwarna status**, seperti di mockup B (biru bekerja, ungu berpikir, hijau santai, dan seterusnya). Ini tetap menjadi petunjuk status utama di samping pose. Kulit dan rambut diturunkan dari id agent.
+- Warna status dari token `--st-*` yang sudah ada; itu satu-satunya warna di kantor. Ruangan dan perabot memakai abu netral (lantai, sisi benda, permukaan atas, garis tepi, garis detail, kaca layar mati), didefinisikan sebagai token CSS baru `--office-*` di `styles.css`, bukan hex lepas di kode kantor. Tidak ada warna kayu, tanaman, atau aksen lain.
+- **Pendar hanya sebagai tanda status.** Bagian yang menyala (layar meja, papan tulis, layar QA, lampu sinyal meja rapat, gelembung "!" izin) memakai `shadowBlur` Canvas dengan warna status agent yang memakainya. Perabot yang tidak dipakai tidak berpendar. Tanpa gradien.
+- **Baju avatar berwarna status** (isi transparan, garis warna status), tetap menjadi petunjuk status utama di samping pose. Kepala dan rambut abu netral; bentuk dan nada rambut diturunkan dari id agent agar agent bisa dibedakan.
 - Klik avatar tetap memilih agent; jalan antar zona tetap mulus.
 - Dikerjakan sebagai Tugas 20, setelah Tugas 19 di `docs/superpowers/plans/2026-11-01-zonder-settings.md`.
 - Klausul §7 lama "furnitur bentuk geometris warna solid" dan "bagian ini sengaja tidak boleh menjadi pekerjaan terbesar" dicabut oleh permintaan pemilik ini. Kerjanya tetap dibatasi satu tugas.
@@ -58,16 +59,16 @@ Papan tulis dan meja rapat berdekatan sehingga terbaca sebagai satu ruang rapat 
 - Tanaman bergoyang pelan; jam dinding dengan jarum yang bergerak.
 
 ### 4.3 Perabot
-Meja kerja dengan monitor dan keyboard, kursi kantor, meja rapat bundar dengan kursi, papan tulis berisi coretan, stasiun QA dengan dua layar, sofa dan meja kecil di lounge, coffee bar dengan mesin kopi dan cangkir, tanaman dalam pot, rak buku, jendela di dinding. Gaya: bentuk membulat, warna datar, tanpa gradien, garis tepi tipis bila perlu agar terbaca.
+Meja kerja dengan monitor dan keyboard, kursi kantor, meja rapat bundar dengan kursi, papan tulis berisi coretan, stasiun QA dengan dua layar, sofa dan meja kecil di lounge, coffee bar dengan mesin kopi dan cangkir, tanaman dalam pot, rak buku, jendela di dinding. Gaya: kotak isometrik abu netral dengan garis tepi 1px dan garis detail tipis (coretan papan, sambungan sofa, bingkai jendela), tanpa gradien. Detail perabot ditambah secukupnya (keyboard, cangkir di meja, rak berisi buku) agar terbaca sebagai benda nyata walau bergaris.
 
 ### 4.4 Tampilan
-Tetap satu ruangan isometrik dengan proyeksi yang ada. Gaya B diterjemahkan ke sudut pandang isometrik.
+Tetap satu ruangan isometrik dengan proyeksi yang ada. Lantai digambar sebagai lempeng tebal; dua dinding belakang rendah dengan jendela bergaris. Avatar sedikit lebih besar dari prototipe agar pose terbaca.
 
 ## 5. Keputusan penulis desain (bukan hasil kesepakatan; bisa diubah)
 
 - Empat pose (approval, testing, done, error) dan seluruh kehidupan latar diusulkan penulis karena pemilik menyerahkannya; pemilik menyetujui gambaran itu.
 - Saat tab kantor tidak terlihat (jendela diminimalkan atau Settings terbuka), loop animasi berhenti atau turun ke frekuensi rendah agar CPU tetap rendah.
-- Kulit dan rambut agent diturunkan secara tetap dari id agent, sehingga agent yang sama selalu terlihat sama setelah restart.
+- Bentuk dan nada rambut agent (abu netral) diturunkan secara tetap dari id agent, sehingga agent yang sama selalu terlihat sama setelah restart.
 - **CPU:** ruangan statis (lantai, dinding, perabot yang tidak bergerak) digambar sekali ke canvas offscreen dan digambar ulang hanya saat ukuran berubah. Loop dibatasi 30 fps. Target terukur: dengan 3 agent diam, rata-rata CPU proses renderer di bawah 5% selama 30 detik di mesin pemilik.
 - **Agent tanpa kursi** (zona penuh, berdiri di tile overflow) memakai varian berdiri dari pose statusnya, tetap dengan baju berwarna status dan tanda yang sama ("!" kuning, "!" merah, dan seterusnya). Peta tidak diubah hanya untuk menambah kursi.
 - Mengubah centang/silang QA menjadi indikator netral (lihat tabel §4.1) adalah keputusan penulis demi anti-tujuan "status palsu".
