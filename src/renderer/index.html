@@ -16,7 +16,7 @@
     </div>
     <div class="side-label">Agent</div>
     <div class="agent-list" id="agentList" role="tablist" aria-orientation="vertical"></div>
-    <div class="router"><span class="dot"></span><span id="routerText">9router belum dikonfigurasi</span></div>
+    <button type="button" class="router" id="routerBtn" aria-haspopup="dialog"><span class="dot" id="routerDot"></span><span id="routerText">9router: memeriksa...</span></button>
   </aside>
 
   <section class="office" aria-label="Kantor">
@@ -61,7 +61,7 @@
     </label>
     <label class="field">Prompt sistem
       <textarea id="spPrompt" rows="6" maxlength="20000"></textarea>
-      <span class="hint">Ditambahkan ke prompt bawaan Claude Code. Aturan izin peran tetap ditegakkan Zonder, apa pun isi prompt ini.</span>
+      <span class="hint" id="spPromptHint">Ditambahkan ke prompt bawaan Claude Code. Aturan izin peran tetap ditegakkan Zonder, apa pun isi prompt ini.</span>
     </label>
     <div class="field-row">
       <label class="field">Jenis
@@ -112,6 +112,26 @@
     <div class="actions">
       <button type="button" class="btn" id="stCancel">Batal</button>
       <button type="submit" class="btn btn-primary" id="stConfirm">Lanjutkan</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="modal" id="keyDialog" aria-labelledby="rkTitle">
+  <form id="keyForm" novalidate>
+    <h2 id="rkTitle">9router</h2>
+    <p class="hint" id="rkState"></p>
+    <label class="field">URL endpoint
+      <input id="rkUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://router-kamu.contoh.com/v1">
+      <span class="hint">Alamat 9router milikmu sendiri, sampai /v1.</span>
+    </label>
+    <label class="field">API key
+      <input id="rkKey" type="password" autocomplete="off" spellcheck="false" maxlength="1000">
+      <span class="hint" id="rkKeyHint">Disimpan terenkripsi oleh Windows (safeStorage). Zonder tidak menampilkannya lagi.</span>
+    </label>
+    <p class="form-error" id="rkError" role="alert" hidden></p>
+    <div class="actions">
+      <button type="button" class="btn" id="rkCancel">Tutup</button>
+      <button type="submit" class="btn btn-primary" id="rkSave">Simpan dan periksa</button>
     </div>
   </form>
 </dialog>

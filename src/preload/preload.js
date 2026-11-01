@@ -17,6 +17,9 @@ contextBridge.exposeInMainWorld('zonder', {
   interruptAgent: (agentId) => ipcRenderer.invoke('zonder:interruptAgent', agentId),
   setModel: (agentId, model) => ipcRenderer.invoke('zonder:setModel', agentId, model),
   respondApproval: (requestId, decision) => ipcRenderer.invoke('zonder:respondApproval', requestId, decision),
+  // {baseUrl, key}: the key goes in only; no method ever returns it.
+  setRouterKey: (config) => ipcRenderer.invoke('zonder:setRouterKey', config),
+  listModels: () => ipcRenderer.invoke('zonder:listModels'),
   subscribeAgentEvents: (cb) => {
     // Pass only the event payload; the IpcRendererEvent would leak sender access.
     const listener = (_e, evt) => cb(evt);

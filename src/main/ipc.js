@@ -5,6 +5,7 @@ const { randomBytes } = require('node:crypto');
 const { CLAUDE_MODELS } = require('./agents/claude-agent.js');
 const { ROLES } = require('./policy/decide.js');
 const { PERSONAS } = require('./personas.js');
+const { RouterOffline } = require('./agents/router-client.js');
 
 const CHANNELS = {
   listAgents: 'zonder:listAgents',
@@ -20,6 +21,8 @@ const CHANNELS = {
   spawnAgent: 'zonder:spawnAgent',
   worktreeStatus: 'zonder:worktreeStatus',
   stopAgent: 'zonder:stopAgent',
+  setRouterKey: 'zonder:setRouterKey',
+  listModels: 'zonder:listModels',
 };
 
 const AGENT_ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -31,6 +34,8 @@ const CLEANUPS = ['keep', 'worktree', 'worktree+branch'];
 const REMOVE_TRIES = 3;
 
 const DECISIONS = ['once', 'session', 'deny'];
+const KINDS = ['claude', 'router'];
+const MAX_KEY = 1000;
 
 function expectArgs(args, count) {
   if (args.length !== count) throw new Error(`expected ${count} arguments, got ${args.length}`);
@@ -46,6 +51,7 @@ function registerIpc({
   worktree = require('./worktree.js'),
   createAgent,
   pickFolder,
+  router,
   newId = () => randomBytes(6).toString('hex'),
   retryDelayMs = 500,
 }) {
@@ -53,6 +59,30 @@ function registerIpc({
   // the path is the policy's "main checkout", so the renderer cannot supply it.
   const pickedRepos = new Set();
   let spawnChain = Promise.resolve();
+  // Model ids from the last successful /models call; spawn and setModel check against it.
+  let routerModels = [];
+  // Each owner runs their own router: the stored URL wins, defaultUrl only fills in until then.
+  const routerUrl = () => router.secrets.getRouterUrl() || router.defaultUrl || null;
+
+  // Router health for the sidebar and status bar. The key never leaves main:
+  // not in the result, not in an error message.
+  async function checkRouter() {
+    const baseUrl = routerUrl();
+    const hasKey = Boolean(await router.secrets.getRouterKey());
+    const down = { baseUrl, hasKey, connected: false, latencyMs: null, models: [], error: null };
+    if (!baseUrl || !hasKey) return down;
+    const key = await router.secrets.getRouterKey();
+    const now = router.now ?? Date.now;
+    const t0 = now();
+    try {
+      routerModels = await router.listModels({ baseUrl, key });
+      return { ...down, connected: true, latencyMs: now() - t0, models: routerModels };
+    } catch (err) {
+      return { ...down, error: err instanceof RouterOffline ? 'Router offline' : err.message };
+    }
+  }
+
+  const modelsFor = (kind) => (kind === 'router' ? routerModels : CLAUDE_MODELS);
 
   const saveRegistry = () => persistence?.saveAgents(store.list().filter((r) => !r.sample));
   const knownAgent = (agentId) => {
@@ -90,8 +120,14 @@ function registerIpc({
     if (!name || name.length > 40) throw new Error('Nama harus 1 sampai 40 karakter.');
     if (store.list().some((r) => r.name.toLowerCase() === name.toLowerCase())) throw new Error(`Nama "${name}" sudah dipakai agent lain.`);
     if (!ROLES.includes(cfg.role)) throw new Error('Peran tidak dikenal.');
-    if (cfg.kind !== 'claude') throw new Error('Jenis agent ini belum tersedia.');
-    if (!CLAUDE_MODELS.includes(cfg.model)) throw new Error('Model tidak dikenal.');
+    if (!KINDS.includes(cfg.kind)) throw new Error('Jenis agent ini belum tersedia.');
+    if (cfg.kind === 'router') {
+      const health = await checkRouter();
+      if (!health.baseUrl) throw new Error('URL 9router belum diisi. Isi lewat tombol 9router di sidebar.');
+      if (!health.hasKey) throw new Error('Kunci 9router belum diisi. Isi lewat tombol 9router di sidebar.');
+      if (!health.connected) throw new Error(`9router tidak bisa dipakai: ${health.error}`);
+    }
+    if (!modelsFor(cfg.kind).includes(cfg.model)) throw new Error('Model tidak dikenal.');
     if (typeof cfg.systemPrompt !== 'string' || cfg.systemPrompt.length > MAX_PROMPT) throw new Error(`Prompt harus teks, paling banyak ${MAX_PROMPT} karakter.`);
     const repo = cfg.workspace;
     if (!pickedRepos.has(repo) || !(await worktree.isGitRepo(repo))) throw new Error('Pilih workspace lewat tombol Pilih folder.');
@@ -139,7 +175,27 @@ function registerIpc({
 
   ipcMain.handle(CHANNELS.spawnOptions, (_e, ...args) => {
     expectArgs(args, 0);
-    return { roles: ROLES.map((role) => ({ role, prompt: PERSONAS[role] })), models: CLAUDE_MODELS, kinds: ['claude'] };
+    return { roles: ROLES.map((role) => ({ role, prompt: PERSONAS[role] })), models: CLAUDE_MODELS, kinds: KINDS };
+  });
+
+  ipcMain.handle(CHANNELS.setRouterKey, async (_e, ...args) => {
+    expectArgs(args, 1);
+    const [cfg] = args;
+    if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) throw new Error('invalid config');
+    const { baseUrl, key } = cfg;
+    if (typeof baseUrl !== 'string') throw new Error('URL router harus teks.');
+    if (typeof key !== 'string' || key.length > MAX_KEY) throw new Error(`Kunci harus teks, paling banyak ${MAX_KEY} karakter.`);
+    // An empty key keeps the stored one, so the URL can change without retyping it.
+    if (!key.trim() && !(await router.secrets.getRouterKey())) throw new Error('Kunci 9router belum diisi.');
+    // URL first: a bad URL must not leave a new key stored next to the old URL.
+    router.secrets.setRouterUrl(baseUrl);
+    if (key.trim()) await router.secrets.setRouterKey(key);
+    return checkRouter();
+  });
+
+  ipcMain.handle(CHANNELS.listModels, (_e, ...args) => {
+    expectArgs(args, 0);
+    return checkRouter();
   });
 
   ipcMain.handle(CHANNELS.selectWorkspace, async (_e, ...args) => {
@@ -237,8 +293,9 @@ function registerIpc({
   ipcMain.handle(CHANNELS.setModel, (_e, ...args) => {
     expectArgs(args, 2);
     const [agentId, model] = args;
-    if (!CLAUDE_MODELS.includes(model)) throw new Error(`invalid model: ${model}`);
-    runningAgent(agentId).setModel(model);
+    const agent = runningAgent(agentId);
+    if (!modelsFor(store.get(agentId).kind).includes(model)) throw new Error(`invalid model: ${model}`);
+    agent.setModel(model);
   });
 
   store.subscribe((evt) => {

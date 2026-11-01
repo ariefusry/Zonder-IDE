@@ -20,6 +20,9 @@ function createWindowOptions() {
 }
 
 const MOCK = process.env.ZONDER_MOCK === '1';
+// Each owner runs their own 9router, so there is no built-in URL: it is set in the
+// 9router dialog. ZONDER_ROUTER_URL fills in until then (automated checks use it).
+const ROUTER_URL = process.env.ZONDER_ROUTER_URL || null;
 
 function createWindow(BrowserWindow) {
   const win = new BrowserWindow(createWindowOptions());
@@ -47,12 +50,15 @@ function seedMock(store) {
 
 // Under plain node (tests) require('electron') is only the binary path.
 if (process.versions.electron) {
-  const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+  const { app, BrowserWindow, ipcMain, dialog, safeStorage } = require('electron');
   const { AgentStore } = require('./store.js');
   const { registerIpc } = require('./ipc.js');
   const { Approvals } = require('./approvals.js');
   const { Persistence } = require('./persistence.js');
   const { ClaudeAgent } = require('./agents/claude-agent.js');
+  const { RouterAgent } = require('./agents/router-agent.js');
+  const { listModels } = require('./agents/router-client.js');
+  const { createSecrets } = require('./secrets.js');
   const store = new AgentStore();
   const approvals = new Approvals({ store });
   // Running agent processes by id; records without one (samples) cannot chat.
@@ -69,7 +75,9 @@ if (process.versions.electron) {
   };
   if (MOCK) seedMock(store);
   app.whenReady().then(() => {
-    persistence = new Persistence(process.env.ZONDER_DATA_DIR || app.getPath('userData'));
+    const dataDir = process.env.ZONDER_DATA_DIR || app.getPath('userData');
+    persistence = new Persistence(dataDir);
+    const secrets = createSecrets({ dir: dataDir, safeStorage });
     registerIpc({
       ipcMain,
       store,
@@ -77,8 +85,11 @@ if (process.versions.electron) {
       approvals,
       persistence,
       agents,
-      createAgent: (record) => new ClaudeAgent({ record, store, persistence, approvals }),
+      createAgent: (record) => (record.kind === 'router'
+        ? new RouterAgent({ record, store, persistence, approvals, getKey: secrets.getRouterKey, baseUrl: () => secrets.getRouterUrl() || ROUTER_URL })
+        : new ClaudeAgent({ record, store, persistence, approvals })),
       pickFolder,
+      router: { defaultUrl: ROUTER_URL, secrets, listModels },
     });
     win = createWindow(BrowserWindow);
     app.on('activate', () => {

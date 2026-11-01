@@ -66,6 +66,8 @@ const state = {
   answering: new Set(),
   models: [],
   selected: null,
+  // Last /models result from main; never holds the key.
+  router: null,
 };
 
 const handlers = {
@@ -271,8 +273,89 @@ document.getElementById('interrupt').addEventListener('click', () => {
   window.zonder.interruptAgent(id).catch((err) => addLocal(id, { type: 'error', message: `Interupsi gagal: ${err.message}` }));
 });
 
+function setRouter(r) {
+  state.router = r;
+  renderChrome();
+}
+
+function refreshRouter() {
+  return window.zonder.listModels().then(setRouter, (err) => setRouter({ baseUrl: state.router?.baseUrl ?? null, hasKey: state.router?.hasKey ?? false, connected: false, latencyMs: null, models: [], error: err.message }));
+}
+
+function routerStateText(r) {
+  if (!r) return 'Memeriksa router...';
+  if (!r.baseUrl && !r.hasKey) return 'Belum ada URL dan kunci tersimpan.';
+  if (!r.baseUrl) return 'Kunci tersimpan, URL belum diisi.';
+  if (!r.hasKey) return 'URL tersimpan, kunci belum diisi.';
+  if (r.connected) return `Router terhubung (${r.latencyMs} ms), ${r.models.length} model.`;
+  return `Router tidak bisa dipakai: ${r.error}`;
+}
+
+function initKeyDialog() {
+  const dialog = document.getElementById('keyDialog');
+  const input = document.getElementById('rkKey');
+  const url = document.getElementById('rkUrl');
+  // The URL is not secret, so it is prefilled; the key never comes back.
+  const fill = () => {
+    stateLine.textContent = routerStateText(state.router);
+    if (!url.value) url.value = state.router?.baseUrl ?? '';
+    document.getElementById('rkKeyHint').textContent = state.router?.hasKey
+      ? 'Kunci sudah tersimpan terenkripsi. Kosongkan untuk tetap memakainya, atau isi untuk mengganti.'
+      : 'Disimpan terenkripsi oleh Windows (safeStorage). Zonder tidak menampilkannya lagi.';
+  };
+  const save = document.getElementById('rkSave');
+  const stateLine = document.getElementById('rkState');
+  const showError = (text) => {
+    const box = document.getElementById('rkError');
+    box.textContent = text || '';
+    box.hidden = !text;
+  };
+  document.getElementById('routerBtn').addEventListener('click', () => {
+    showError('');
+    url.value = '';
+    fill();
+    dialog.showModal();
+    (url.value ? input : url).focus();
+    refreshRouter().then(fill);
+  });
+  document.getElementById('rkCancel').addEventListener('click', () => dialog.close());
+  // The key lives in the input only until it is sent; it is never kept in state.
+  dialog.addEventListener('close', () => { input.value = ''; });
+  document.getElementById('keyForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!url.value.trim()) {
+      showError('Isi URL endpoint 9router.');
+      url.focus();
+      return;
+    }
+    if (!input.value.trim() && !state.router?.hasKey) {
+      showError('Isi API key.');
+      input.focus();
+      return;
+    }
+    showError('');
+    save.disabled = true;
+    save.textContent = 'Memeriksa...';
+    const key = input.value;
+    input.value = '';
+    try {
+      const r = await window.zonder.setRouterKey({ baseUrl: url.value.trim(), key });
+      setRouter(r);
+      fill();
+      if (r.connected) dialog.close();
+      else showError(`Disimpan, tapi router belum bisa dipakai: ${r.error}`);
+    } catch (err) {
+      showError(err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
+    }
+    save.disabled = false;
+    save.textContent = 'Simpan dan periksa';
+  });
+}
+
 async function load() {
-  initSpawnModal({ onSpawned });
+  initSpawnModal({ onSpawned, onRouter: setRouter });
+  initKeyDialog();
+  refreshRouter();
   initStopDialog();
   startOffice(document.getElementById('office'), {
     getAgents: () => state.agents,

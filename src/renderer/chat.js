@@ -53,8 +53,8 @@ function renderComposer(state, handlers) {
   model.hidden = !a;
   if (!a) return;
   // Rebuild the select only when its content changes, so an open dropdown survives events.
-  const models = state.mock ? state.models : CLAUDE_MODELS;
-  const key = `${a.id}|${a.model}|${state.mock}`;
+  const models = state.mock ? state.models : a.kind === 'router' ? state.router?.models ?? [] : CLAUDE_MODELS;
+  const key = `${a.id}|${a.model}|${state.mock}|${models.join(',')}`;
   if (key === modelKey) return;
   modelKey = key;
   model.replaceChildren();

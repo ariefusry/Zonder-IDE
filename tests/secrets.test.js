@@ -73,3 +73,22 @@ test('a rotated OS key re-encrypts the stored key on read', async (t) => {
   assert.equal(await createSecrets({ dir, safeStorage: rotating }).getRouterKey(), KEY);
   assert.equal(rotating.encrypted, 1);
 });
+
+test('router URL: none at first, stored normalised, survives a new instance, holds no key', async (t) => {
+  const { dir, secrets } = setup(t);
+  assert.equal(secrets.getRouterUrl(), null);
+  await secrets.setRouterKey(KEY);
+  secrets.setRouterUrl('  https://router.example.com/v1/  ');
+  assert.equal(secrets.getRouterUrl(), 'https://router.example.com/v1');
+  assert.equal(createSecrets({ dir, safeStorage: fakeSafeStorage() }).getRouterUrl(), 'https://router.example.com/v1');
+  assert.ok(!fs.readFileSync(path.join(dir, 'router.json'), 'utf8').includes(KEY));
+});
+
+test('router URL: only http(s) URLs without credentials are accepted', async (t) => {
+  const { secrets } = setup(t);
+  for (const bad of ['', 'router.example.com', 'ftp://x/v1', 'file:///C:/x', 'https://user:pass@x/v1', 42, null]) {
+    assert.throws(() => secrets.setRouterUrl(bad), /URL/, String(bad));
+  }
+  secrets.setRouterUrl('http://127.0.0.1:20128/v1');
+  assert.equal(secrets.getRouterUrl(), 'http://127.0.0.1:20128/v1');
+});

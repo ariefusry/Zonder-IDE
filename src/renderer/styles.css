@@ -54,7 +54,8 @@ button:disabled { cursor: default; opacity: .55; }
 .agent .md, .agent .stt { grid-column: 2; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agent .md { font-family: var(--mono); color: var(--muted); }
 .agent .stt { color: var(--c, var(--muted)); }
-.router { border-top: 1px solid var(--border); padding: 10px 14px; font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.router { border: 0; border-top: 1px solid var(--border); background: transparent; padding: 10px 14px; font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 8px; text-align: left; }
+.router:hover { background: var(--surface-2); color: var(--text); }
 
 /* Office */
 .office { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
@@ -133,7 +134,9 @@ pre.code { background: var(--bg); border: 1px solid var(--border); border-radius
 .field input, .field select, .field textarea { font-size: 12px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
 .field textarea { resize: vertical; min-height: 96px; line-height: 1.5; }
 .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--accent-text); }
-.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* minmax(0, 1fr): a select is as wide as its longest option otherwise, and pushes past the modal. */
+.field-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.field select { min-width: 0; width: 100%; text-overflow: ellipsis; }
 .hint { font-size: 11px; color: var(--muted); }
 .mono { font-family: var(--mono); overflow-wrap: anywhere; }
 .ws-row { display: flex; gap: 8px; align-items: center; }

@@ -67,13 +67,13 @@ function setup({ startStatus = 'idle', createFails = false, removeFailures = 0, 
 
 const picked = async (s) => s.call(CHANNELS.selectWorkspace);
 
-test('spawnOptions lists roles with their default prompts, Claude models, and only the claude kind', async () => {
+test('spawnOptions lists roles with their default prompts, Claude models, and the claude and router kinds', async () => {
   const s = setup();
   const o = await s.call(CHANNELS.spawnOptions);
   assert.deepEqual(o.roles.map((r) => r.role), Object.keys(PERSONAS));
   assert.equal(o.roles[0].prompt, PERSONAS['Senior Developer']);
   assert.deepEqual(o.models, ['opus', 'sonnet', 'haiku']);
-  assert.deepEqual(o.kinds, ['claude']);
+  assert.deepEqual(o.kinds, ['claude', 'router']);
 });
 
 test('selectWorkspace: cancel, non-repo, and repo with branches and current HEAD', async () => {
@@ -125,7 +125,7 @@ test('spawnAgent validates every field before touching git', async () => {
     [{ name: 'x'.repeat(41) }, /nama/i],
     [{ name: 'raka' }, /sudah dipakai/i],
     [{ role: 'Boss' }, /peran/i],
-    [{ kind: 'router' }, /jenis/i],
+    [{ kind: 'codex' }, /jenis/i],
     [{ model: 'gpt-5' }, /model/i],
     [{ model: '' }, /model/i],
     [{ systemPrompt: 'x'.repeat(20001) }, /prompt/i],
