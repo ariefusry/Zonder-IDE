@@ -39,6 +39,29 @@ test('overflow spots are walkable and not seats', () => {
   }
 });
 
+test('decor blocks its tiles and never covers a seat, overflow spot or the door', () => {
+  const { DECOR } = require('../src/renderer/office/map.js');
+  const spots = new Set([...allSeats(), ...Object.values(ZONES).map((z) => z.overflow), DOOR].map((s) => `${s.gx},${s.gy}`));
+  assert.ok(DECOR.length > 0);
+  for (const d of DECOR) {
+    for (let y = d.gy; y < d.gy + d.d; y++) {
+      for (let x = d.gx; x < d.gx + d.w; x++) {
+        assert.equal(GRID[y][x], false, `${d.kind} ${x},${y}`);
+        assert.ok(!spots.has(`${x},${y}`), `${d.kind} ${x},${y}`);
+      }
+    }
+  }
+});
+
+test('the whiteboard stands beside the meeting table, as one meeting room', () => {
+  const { FURNITURE } = require('../src/renderer/office/map.js');
+  const board = FURNITURE.find((f) => f.zone === 'whiteboard');
+  const table = FURNITURE.find((f) => f.zone === 'meeting');
+  // Overlapping columns and at most two tiles of floor between them.
+  assert.ok(board.gx < table.gx + table.w && table.gx < board.gx + board.w);
+  assert.ok(table.gy - (board.gy + board.d) <= 2, `gap ${table.gy - (board.gy + board.d)}`);
+});
+
 test('every seat and overflow spot is reachable from the door', () => {
   assert.ok(walkable(DOOR));
   for (const [name, zone] of Object.entries(ZONES)) {

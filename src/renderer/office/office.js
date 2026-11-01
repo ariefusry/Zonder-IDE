@@ -1,14 +1,20 @@
-// Isometric office on Canvas 2D. Each frame reads the agent list (kept current by
-// store events in app.js), moves avatars toward their zone, and redraws. The RAF
-// loop follows pixel-agent-desk src/office/office-renderer.js (MIT License,
-// Copyright (c) 2025 geunilbae; notice in pathfinder.js).
+// Isometric office on Canvas 2D (office-life spec). Each frame reads the agent list
+// (kept current by store events in app.js), moves avatars toward their zone, and
+// redraws. The RAF loop follows pixel-agent-desk src/office/office-renderer.js
+// (MIT License, Copyright (c) 2025 geunilbae; notice in pathfinder.js).
+//
+// CPU (spec §5): the room renders once into an offscreen layer and every piece of
+// furniture into its own sprite, again only on resize. A frame blits those, draws
+// the live parts and avatars, and is capped at 30 fps. The loop stops while the
+// window is hidden, the owner hides the office, or the canvas is not displayed
+// (Settings open).
 
 // Live avatar state, readable from devtools while checking the office.
 let officeState = null;
 
 function startOffice(canvas, { getAgents, onSelect, getSelected = () => null }) {
-  const { project, depthKey } = OfficeIso;
-  const { WIDTH, HEIGHT, FURNITURE, ZONES } = OfficeMap;
+  const { project, drawOrder } = OfficeIso;
+  const { WIDTH, HEIGHT } = OfficeMap;
   const ctx = canvas.getContext('2d');
 
   // Canvas cannot read CSS variables, so resolve the design tokens once.
@@ -16,42 +22,35 @@ function startOffice(canvas, { getAgents, onSelect, getSelected = () => null }) 
   const token = (name) => css.getPropertyValue(name).trim();
   const resolve = (value) => (value.startsWith('var(') ? token(value.slice(4, -1)) : value);
   const C = {
-    floor: token('--surface'),
+    floor: token('--office-floor'),
+    body: token('--office-body'),
+    deck: token('--office-deck'),
+    line: token('--office-line'),
+    detail: token('--office-detail'),
+    glass: token('--office-glass'),
+    surface: token('--surface'),
     edge: token('--border'),
     text: token('--text'),
     muted: token('--muted'),
     ring: token('--accent-text'),
-    error: token('--st-error'),
     font: token('--font'),
-    // Furniture shades sit between --surface-2 and --border so it reads above the floor.
-    top: '#26262a',
-    left: token('--surface-2'),
-    right: '#202023',
-    rim: '#3a3a40',
   };
-
-  const chars = new Map();
-  officeState = { chars };
-  let view = { s: 1, ox: 0, oy: 0, w: 0, h: 0 };
-
-  function layout() {
-    const dpr = window.devicePixelRatio || 1;
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
+  const colorOf = (status) => resolve((STATUS[status] || STATUS.idle).color);
+  const looks = new Map();
+  function lookOf(id) {
+    if (!looks.has(id)) {
+      const a = OfficeLook.appearanceFor(id);
+      looks.set(id, { hair: token(a.hair), hairStyle: a.hairStyle, seed: OfficeLook.hash(id) });
     }
-    const left = project(0, HEIGHT).x;
-    const right = project(WIDTH, 0).x;
-    // Room above the back wall for the whiteboard and name tags.
-    const top = project(0, 0, 3).y;
-    const bottom = project(WIDTH, HEIGHT).y;
-    const s = Math.max(0.2, Math.min((w - 32) / (right - left), (h - 32) / (bottom - top), 3));
-    view = { s, w, h, ox: (w - (right - left) * s) / 2 - left * s, oy: (h - (bottom - top) * s) / 2 - top * s };
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.imageSmoothingEnabled = false;
+    return looks.get(id);
   }
+
+  const pieces = OfficeFurniture.pieces(OfficeMap);
+  const chars = new Map();
+  officeState = { chars, frames: 0 };
+  let view = { s: 1, ox: 0, oy: 0, w: 0, h: 0, dpr: 0 };
+  let roomLayer = null;
+  const sprites = new Map();
 
   // Grid point to CSS pixels on the canvas.
   function at(gx, gy, gz = 0) {
@@ -59,72 +58,45 @@ function startOffice(canvas, { getAgents, onSelect, getSelected = () => null }) 
     return { x: view.ox + p.x * view.s, y: view.oy + p.y * view.s };
   }
 
-  function poly(points, fill, stroke) {
-    ctx.beginPath();
-    points.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-    ctx.closePath();
-    ctx.fillStyle = fill;
-    ctx.fill();
-    if (stroke) {
-      ctx.strokeStyle = stroke;
-      ctx.lineWidth = 1;
-      ctx.stroke();
+  // Draw into a new offscreen canvas covering CSS pixels x..x+w, y..y+h.
+  function offscreen(x, y, w, h, paint) {
+    const layer = document.createElement('canvas');
+    layer.width = Math.max(1, Math.ceil(w * view.dpr));
+    layer.height = Math.max(1, Math.ceil(h * view.dpr));
+    const c = layer.getContext('2d');
+    c.setTransform(view.dpr, 0, 0, view.dpr, -x * view.dpr, -y * view.dpr);
+    paint(OfficeFurniture.pen(c, at, view.s, C));
+    return { img: layer, x, y, w, h };
+  }
+
+  // Fit the room to the canvas; rebuild the static layers when the size changed.
+  function layout() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    if (w === view.w && h === view.h && dpr === view.dpr) return;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    const left = project(0, HEIGHT).x;
+    const right = project(WIDTH, 0).x;
+    // Room above the back wall for the whiteboard, marks and name tags.
+    const top = project(0, 0, 4.2).y;
+    const bottom = project(WIDTH, HEIGHT, -0.6).y;
+    const s = Math.max(0.2, Math.min((w - 32) / (right - left), (h - 32) / (bottom - top), 3));
+    view = { s, w, h, dpr, ox: (w - (right - left) * s) / 2 - left * s, oy: (h - (bottom - top) * s) / 2 - top * s };
+    if (!w || !h) return;
+    roomLayer = offscreen(0, 0, w, h, (g) => OfficeFurniture.room(g, WIDTH, HEIGHT));
+    sprites.clear();
+    for (const p of pieces) {
+      const pts = [];
+      for (const [x, y] of [[p.x0, p.y0], [p.x1, p.y0], [p.x0, p.y1], [p.x1, p.y1]]) pts.push(at(x, y, -0.1), at(x, y, p.top));
+      const pad = 4;
+      const x0 = Math.floor(Math.min(...pts.map((q) => q.x))) - pad;
+      const y0 = Math.floor(Math.min(...pts.map((q) => q.y))) - pad;
+      const x1 = Math.ceil(Math.max(...pts.map((q) => q.x))) + pad;
+      const y1 = Math.ceil(Math.max(...pts.map((q) => q.y))) + pad;
+      sprites.set(p.id, offscreen(x0, y0, x1 - x0, y1 - y0, p.body));
     }
-  }
-
-  function drawFloor() {
-    poly([at(0, 0), at(WIDTH, 0), at(WIDTH, HEIGHT), at(0, HEIGHT)], C.floor, C.edge);
-  }
-
-  // Furniture is drawn one tile at a time so each tile sorts against avatars on its own.
-  // The zone name sits on top of the zone's first piece of furniture.
-  function furnitureSlices() {
-    const slices = [];
-    const named = new Set();
-    for (const f of FURNITURE) {
-      if (!named.has(f.zone)) {
-        named.add(f.zone);
-        const cx = f.gx + f.w / 2;
-        const cy = f.gy + f.d / 2;
-        // After the furniture's front tile, so no tile of it covers the name.
-        slices.push({ depth: depthKey(project(f.gx + f.w - 0.5, f.gy + f.d - 0.5).y) + 0.005, draw: () => drawZoneName(ZONES[f.zone].name, at(cx, cy, f.h)) });
-      }
-      const inside = (x, y) => x >= f.gx && x < f.gx + f.w && y >= f.gy && y < f.gy + f.d;
-      for (let y = f.gy; y < f.gy + f.d; y++) {
-        for (let x = f.gx; x < f.gx + f.w; x++) {
-          slices.push({
-            depth: depthKey(project(x + 0.5, y + 0.5).y),
-            draw: () => drawSlice(f, x, y, inside),
-          });
-        }
-      }
-    }
-    return slices;
-  }
-
-  function drawZoneName(name, p) {
-    ctx.font = `11px ${C.font}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = C.muted;
-    ctx.fillText(name, p.x, p.y);
-  }
-
-  function drawSlice(f, x, y, inside) {
-    const h = f.h;
-    // Only outer faces and edges, so a desk reads as one block.
-    if (!inside(x, y + 1)) poly([at(x, y + 1, h), at(x + 1, y + 1, h), at(x + 1, y + 1), at(x, y + 1)], f.zone === 'whiteboard' ? C.rim : C.left);
-    if (!inside(x + 1, y)) poly([at(x + 1, y, h), at(x + 1, y + 1, h), at(x + 1, y + 1), at(x + 1, y)], C.right);
-    poly([at(x, y, h), at(x + 1, y, h), at(x + 1, y + 1, h), at(x, y + 1, h)], C.top);
-    ctx.strokeStyle = C.rim;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    const edge = (a, b) => { ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); };
-    if (!inside(x, y - 1)) edge(at(x, y, h), at(x + 1, y, h));
-    if (!inside(x + 1, y)) edge(at(x + 1, y, h), at(x + 1, y + 1, h));
-    if (!inside(x, y + 1)) edge(at(x + 1, y + 1, h), at(x, y + 1, h));
-    if (!inside(x - 1, y)) edge(at(x, y + 1, h), at(x, y, h));
-    ctx.stroke();
   }
 
   // Avatars without a seat share their zone's overflow tile; spread them sideways.
@@ -146,89 +118,92 @@ function startOffice(canvas, { getAgents, onSelect, getSelected = () => null }) 
     return points;
   }
 
-  function drawAvatar(ch, foot, selected) {
-    const u = view.s;
-    const color = resolve(STATUS[ch.status].color);
-    if (selected) {
-      ctx.beginPath();
-      ctx.ellipse(foot.x, foot.y, 11 * u, 5.5 * u, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = C.ring;
-      ctx.lineWidth = 2;
-      ctx.stroke();
+  // Which equipment an arrived agent is using, keyed like a piece's `use`.
+  function inUse() {
+    const use = new Map();
+    for (const ch of chars.values()) {
+      if (ch.path.length) continue;
+      const key = ch.zone === 'desk' ? (ch.seat ? `desk:${ch.seat}` : null) : ch.zone;
+      if (key && !use.has(key)) use.set(key, ch.status);
     }
-    ctx.beginPath();
-    ctx.ellipse(foot.x, foot.y, 7 * u, 3.5 * u, 0, 0, Math.PI * 2);
-    ctx.fillStyle = C.edge;
-    ctx.fill();
-    ctx.beginPath();
-    ctx.roundRect(foot.x - 5 * u, foot.y - 17 * u, 10 * u, 15 * u, 3 * u);
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(foot.x, foot.y - 21.5 * u, 4.5 * u, 0, Math.PI * 2);
-    ctx.fillStyle = C.text;
-    ctx.fill();
-
-    if (OfficeCharacters.avatarLook(ch.status).flag === 'error') {
-      const px = foot.x + 10 * u;
-      ctx.strokeStyle = C.text;
-      ctx.lineWidth = Math.max(1, u);
-      ctx.beginPath();
-      ctx.moveTo(px, foot.y);
-      ctx.lineTo(px, foot.y - 30 * u);
-      ctx.stroke();
-      poly([{ x: px, y: foot.y - 30 * u }, { x: px + 11 * u, y: foot.y - 26 * u }, { x: px, y: foot.y - 22 * u }], C.error);
-    }
+    return use;
   }
 
   // Name tags go on top of everything, so furniture never hides who is who.
-  function drawTag(label, foot, selected) {
-    const u = view.s;
+  function drawTag(label, x, headTop, selected) {
     ctx.font = `11px ${C.font}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const tw = ctx.measureText(label).width + 10;
-    const ty = foot.y - 26 * u - 10;
+    const ty = headTop - 12;
     ctx.beginPath();
-    ctx.roundRect(foot.x - tw / 2, ty - 8, tw, 16, 4);
-    ctx.fillStyle = C.floor;
+    ctx.roundRect(x - tw / 2, ty - 8, tw, 16, 4);
+    ctx.fillStyle = C.surface;
     ctx.fill();
     ctx.strokeStyle = selected ? C.ring : C.edge;
     ctx.lineWidth = 1;
     ctx.stroke();
     ctx.fillStyle = C.text;
-    ctx.fillText(label, foot.x, ty);
+    ctx.fillText(label, x, ty);
   }
+
+  // Chair and sofa seat height in tiles.
+  const SEAT_Z = 0.32;
 
   // Screen boxes of the avatars drawn last frame, front-most last, for click-picking.
   let hits = [];
 
-  function draw() {
-    layout();
+  function draw(t) {
+    ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
     ctx.clearRect(0, 0, view.w, view.h);
-    drawFloor();
+    ctx.drawImage(roomLayer.img, 0, 0, view.w, view.h);
+    const g = OfficeFurniture.pen(ctx, at, view.s, C);
+    OfficeFurniture.clockHands(g, new Date());
+
     const selected = getSelected();
+    const use = inUse();
     const points = standPoints();
-    const items = furnitureSlices();
+    const items = [...pieces];
     for (const ch of chars.values()) {
       const p = points.get(ch.id);
-      const foot = at(p.gx, p.gy);
-      // Avatars after furniture on the same depth: they stand in front of it.
-      items.push({ depth: depthKey(project(p.gx, p.gy).y) + 0.01, ch, foot });
+      const r = 0.2;
+      // After a chair on the same tile: the sitter is drawn over it.
+      items.push({ ch, p, x0: p.gx - r, x1: p.gx + r, y0: p.gy - r, y1: p.gy + r, bias: 0.01 });
     }
-    items.sort((a, b) => a.depth - b.depth);
     hits = [];
-    for (const it of items) {
-      if (it.draw) {
-        it.draw();
+    const tags = [];
+    for (const it of drawOrder(items)) {
+      if (!it.ch) {
+        const sp = sprites.get(it.id);
+        ctx.drawImage(sp.img, sp.x, sp.y, sp.w, sp.h);
+        if (it.live) {
+          const status = it.use ? use.get(it.use) || null : null;
+          it.live(g, t, status, status ? colorOf(status) : null);
+        }
         continue;
       }
-      drawAvatar(it.ch, it.foot, it.ch.id === selected);
-      const u = view.s;
-      hits.push({ id: it.ch.id, x0: it.foot.x - 9 * u, x1: it.foot.x + 9 * u, y0: it.foot.y - 26 * u - 18, y1: it.foot.y + 4 * u });
+      const { ch, p } = it;
+      const walking = ch.path.length > 0;
+      const pose = OfficeLook.poseFor(ch.status, { walking, seated: Boolean(ch.seat) && !walking });
+      // On the sofa the sitter leans back into it, half a tile behind the seat tile.
+      const back = !walking && ch.zone === 'lounge' && ch.seat ? 0.5 : 0;
+      const look = lookOf(ch.id);
+      const floor = at(p.gx, p.gy - back);
+      const box = OfficeAvatar.draw(g, {
+        floor,
+        foot: pose.standing ? floor : at(p.gx, p.gy - back, SEAT_Z),
+        ...pose,
+        color: colorOf(ch.status),
+        ...look,
+        t,
+        selected: ch.id === selected,
+      }, C);
+      hits.push({ id: ch.id, ...box });
+      tags.push({ label: ch.name, x: at(p.gx, p.gy - back).x, headTop: box.headTop, selected: ch.id === selected });
     }
-    for (const it of items) if (it.ch) drawTag(it.ch.name, it.foot, it.ch.id === selected);
+    for (const tag of tags) drawTag(tag.label, tag.x, tag.headTop, tag.selected);
     officeState.hits = hits;
+    officeState.frames++;
   }
 
   function hitAt(e) {
@@ -248,45 +223,72 @@ function startOffice(canvas, { getAgents, onSelect, getSelected = () => null }) 
   };
   const onMove = (e) => canvas.style.setProperty('cursor', hitAt(e) ? 'pointer' : 'default');
 
+  // Hidden by the owner (layout toggle): no frames until shown again.
+  let hiddenByLayout = false;
+  const shown = () => !document.hidden && !hiddenByLayout && canvas.offsetParent !== null;
+
+  const FRAME_MS = 1000 / 30;
+  // Between frames the loop sleeps on a timer, so a 144 or 240 Hz display does not
+  // wake it for frames it would skip; the frame itself still runs in rAF.
   let raf = 0;
+  let timer = 0;
   let last = 0;
+  let due = 0;
   function frame(now) {
-    raf = requestAnimationFrame(frame);
-    // Clamp, so a long pause does not turn into one giant step.
+    raf = 0;
+    if (!shown()) return;
+    // Up to 2 ms early still counts, so vsync jitter does not drop a frame.
+    if (now < due - 2) {
+      raf = requestAnimationFrame(frame);
+      return;
+    }
+    // Real time, clamped so a long pause does not turn into one giant step.
     const dt = Math.min((now - last) / 1000, 0.1);
     last = now;
+    due = Math.max(due + FRAME_MS, now - 2);
     OfficeCharacters.sync(chars, getAgents());
     for (const ch of chars.values()) OfficeCharacters.step(ch, dt);
-    draw();
+    layout();
+    if (roomLayer && view.w && view.h) draw(now);
+    timer = setTimeout(() => {
+      timer = 0;
+      if (shown()) raf = requestAnimationFrame(frame);
+    }, Math.max(0, due - performance.now() - 8));
   }
   function run() {
-    if (raf) return;
-    last = performance.now();
+    if (raf || timer || !shown()) return;
+    last = performance.now() - FRAME_MS;
+    due = 0;
     raf = requestAnimationFrame(frame);
   }
   function pause() {
     cancelAnimationFrame(raf);
+    clearTimeout(timer);
     raf = 0;
+    timer = 0;
   }
-  // Hidden by the owner (layout toggle): no frames until shown again.
-  let hiddenByLayout = false;
-  const onVisibility = () => (document.hidden || hiddenByLayout ? pause() : run());
+  const update = () => (shown() ? run() : pause());
+  // Settings hides the column with display:none; the canvas size changes then and
+  // again when it is back.
+  const observer = new ResizeObserver(update);
 
   canvas.addEventListener('click', onClick);
   canvas.addEventListener('mousemove', onMove);
-  document.addEventListener('visibilitychange', onVisibility);
+  document.addEventListener('visibilitychange', update);
+  observer.observe(canvas);
   run();
 
   return {
     setHidden(hidden) {
       hiddenByLayout = hidden;
-      onVisibility();
+      update();
     },
     stop() {
       pause();
+      observer.disconnect();
       canvas.removeEventListener('click', onClick);
       canvas.removeEventListener('mousemove', onMove);
-      document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener('visibilitychange', update);
     },
   };
 }

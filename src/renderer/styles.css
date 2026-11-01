@@ -15,6 +15,19 @@
   --st-done: #22c55e;
   --st-error: #f87171;
   --st-idle: #9a9aa2;
+  /* Office room (office-life spec §3): neutral greys only; colour comes from --st-*. */
+  --office-floor: #121314;
+  --office-body: #17181a;
+  --office-deck: #1d1f21;
+  --office-line: #3d4144;
+  --office-detail: #2b2e30;
+  --office-glass: #0f1011;
+  --office-hair-1: #2f3134;
+  --office-hair-2: #45484c;
+  --office-hair-3: #5b5f64;
+  --office-hair-4: #72767c;
+  --office-hair-5: #8b8f95;
+  --office-hair-6: #a6aab0;
   --font: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
   --mono: 'Cascadia Code', Consolas, monospace;
 }
