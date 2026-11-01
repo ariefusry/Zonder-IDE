@@ -493,3 +493,57 @@ test('start after a relaunch replays stored history into the first request, once
   await s.agent.stop();
   s.cleanup();
 });
+
+test('system prompt lists name + description of the role skills and mentions load_skill; no skills -> no skill section and no load_skill tool', async () => {
+  const skills = [
+    { id: 'user:ui', name: 'ui', description: 'Aturan UI tanpa slop.', source: 'user', dir: 'C:\\x\\ui' },
+    { id: 'kit:deck', name: 'deck', description: 'Membuat slide.', source: 'kit', dir: 'C:\\x\\deck' },
+  ];
+  const s = setup({ script: [{ text: 'ok' }], agent: { listSkills: () => skills } });
+  const t = setup({ script: [{ text: 'ok' }], agent: { listSkills: () => skills } });
+  try {
+    s.record.rolePolicy = { name: 'Designer', write: 'ask', shell: 'ask', skills: ['user:ui'], disableSkills: false };
+    await s.agent.start();
+    s.agent.send('hai');
+    await s.agent.turn;
+    const req = s.router.requests[0];
+    assert.match(req.messages[0].content, /load_skill/);
+    assert.match(req.messages[0].content, /- ui: Aturan UI tanpa slop\./);
+    assert.doesNotMatch(req.messages[0].content, /deck/);
+    assert.ok(req.tools.some((x) => x.function.name === 'load_skill'));
+
+    t.record.rolePolicy = { name: 'Junior Developer', write: 'ask', shell: 'ask', skills: [], disableSkills: false };
+    await t.agent.start();
+    t.agent.send('hai');
+    await t.agent.turn;
+    const plain = t.router.requests[0];
+    assert.doesNotMatch(plain.messages[0].content, /load_skill|Skill/);
+    assert.ok(!plain.tools.some((x) => x.function.name === 'load_skill'));
+  } finally {
+    s.cleanup();
+    t.cleanup();
+  }
+});
+
+test('a load_skill call runs without an approval card and returns the skill text', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'zonder-ras-'));
+  fs.writeFileSync(path.join(root, 'SKILL.md'), 'Aturan: satu aksen.');
+  const skills = [{ id: 'user:ui', name: 'ui', description: 'Aturan UI.', source: 'user', dir: root }];
+  const s = setup({
+    role: 'Reviewer',
+    script: [{ calls: [{ id: 'c1', name: 'load_skill', args: '{"name":"ui"}' }] }, { text: 'Satu aksen.' }],
+    agent: { listSkills: () => skills },
+  });
+  try {
+    s.record.rolePolicy = { name: 'Reviewer', write: 'deny', shell: 'deny', skills: ['user:ui'], disableSkills: false };
+    await s.agent.start();
+    s.agent.send('muat skill ui');
+    await s.agent.turn;
+    assert.deepEqual(s.of('tool_end').map((e) => [e.isError, e.output]), [[false, 'Aturan: satu aksen.']]);
+    assert.equal(s.of('approval_request').length, 0);
+    assert.deepEqual(s.router.requests[1].messages.at(-1), { role: 'tool', tool_call_id: 'c1', content: 'Aturan: satu aksen.' });
+  } finally {
+    s.cleanup();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

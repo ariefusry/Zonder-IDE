@@ -205,7 +205,13 @@
                 </select>
               </label>
             </div>
-            <div id="roleSkills" hidden></div>
+            <fieldset class="role-skills" id="roleSkills">
+              <legend>Skill <span class="hint" id="roleSkillCount"></span></legend>
+              <input type="search" id="roleSkillFilter" placeholder="Cari skill" aria-label="Cari skill" autocomplete="off" spellcheck="false">
+              <div class="skill-checks" id="roleSkillChecks"></div>
+              <label class="skill-off"><input type="checkbox" id="roleNoSkills"> Matikan semua skill (agent Claude)</label>
+              <span class="hint">Agent 9router memuat skill yang dicentang lewat tool load_skill. Agent Claude memakai skill yang dicentang dan skill lain diblokir; skill di folder .claude milik repo tidak terdaftar di sini dan tetap aktif.</span>
+            </fieldset>
             <p class="role-note">Selalu berlaku untuk semua peran: file kredensial, checkout utama, dan apa pun di luar worktree agent diblokir, begitu juga force push dan menulis ulang riwayat Git. Pasang paket, git push, dan hapus selalu bertanya.</p>
             <p class="form-error" id="roleError" role="alert" hidden></p>
             <div class="role-confirm" id="roleConfirm" hidden>
@@ -221,7 +227,11 @@
           </form>
         </div>
       </section>
-      <section class="set-pane" id="set-skills" hidden><h1>Skills</h1><p class="set-sub">Diisi di tugas berikutnya.</p></section>
+      <section class="set-pane set-wide" id="set-skills" hidden>
+        <h1>Skills</h1>
+        <p class="set-sub">Skill Claude Code milikmu dari <span class="mono">~/.claude/skills</span> dan plugin yang terpasang. Pilih skill untuk tiap peran di Roles.</p>
+        <div class="skill-list" id="skillList"></div>
+      </section>
       <section class="set-pane" id="set-agent" hidden><h1>Agent</h1><p class="set-sub">Diisi di tugas berikutnya.</p></section>
       <section class="set-pane" id="set-workspace" hidden><h1>Workspace</h1><p class="set-sub">Diisi di tugas berikutnya.</p></section>
       <section class="set-pane" id="set-notify" hidden><h1>Notifikasi</h1><p class="set-sub">Diisi di tugas berikutnya.</p></section>

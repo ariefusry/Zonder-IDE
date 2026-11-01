@@ -5,6 +5,7 @@
 
 const { listModels, streamChat, RouterOffline } = require('./router-client.js');
 const routerTools = require('./router-tools.js');
+const skillsModule = require('../skills.js');
 const { classifyShell } = require('../policy/shell.js');
 const { IllegalTransition } = require('../store.js');
 
@@ -15,14 +16,23 @@ const INPUT_FIELD_CAP = 2000;
 
 const cap = (text, max) => (text.length > max ? `${text.slice(0, max)}\n… (dipotong, ${text.length} karakter)` : text);
 
-function systemPrompt(record) {
-  const base = [
+// skills: the role's skills that exist now (name + description only; the
+// content is loaded through load_skill when the agent needs it).
+function systemPrompt(record, skills = []) {
+  const parts = [[
     'Kamu agent coding yang dijalankan Zonder.',
     `Kamu bekerja di worktree Git: ${record.worktreePath}`,
     'Pakai tool read_file, list_dir, write_file, dan run_command. Path relatif terhadap root worktree.',
     'Zonder menolak akses ke luar worktree dan beberapa aksi butuh persetujuan pemilik; bila ditolak, alasannya datang sebagai hasil tool.',
-  ].join('\n');
-  return record.persona && record.persona.trim() ? `${base}\n\n${record.persona}` : base;
+  ].join('\n')];
+  if (skills.length) {
+    parts.push([
+      'Skill peranmu. Sebelum memakai satu skill, muat isinya dengan tool load_skill (name: nama skill). File pendukungnya dimuat dengan path relatif di folder skill itu.',
+      ...skills.map((s) => (s.description ? `- ${s.name}: ${s.description}` : `- ${s.name}`)),
+    ].join('\n'));
+  }
+  if (record.persona && record.persona.trim()) parts.push(record.persona);
+  return parts.join('\n\n');
 }
 
 // Rebuild the conversation after a relaunch from the persisted chat history.
@@ -39,7 +49,7 @@ function replayHistory(events) {
 }
 
 class RouterAgent {
-  constructor({ record, store, persistence, approvals, getKey, baseUrl, fetch = globalThis.fetch, tools = routerTools, toolCtx = {}, doneIdleMs = 30000 }) {
+  constructor({ record, store, persistence, approvals, getKey, baseUrl, fetch = globalThis.fetch, tools = routerTools, toolCtx = {}, doneIdleMs = 30000, listSkills = skillsModule.listSkills }) {
     this.record = record;
     this.store = store;
     this.persistence = persistence;
@@ -51,6 +61,9 @@ class RouterAgent {
     this.tools = tools;
     this.toolCtx = toolCtx;
     this.doneIdleMs = doneIdleMs;
+    this.listSkills = listSkills;
+    // The tool list of the current round (load_skill only for roles with skills).
+    this.toolList = tools.TOOLS;
 
     // The conversation sent to the router, without the system message.
     this.messages = [];
@@ -166,12 +179,15 @@ class RouterAgent {
       for (let rounds = 0; ; rounds++) {
         const key = await this.getKey();
         if (!key) throw new Error('Kunci 9router belum diisi. Isi lewat tombol 9router di sidebar.');
+        // Skills are read again each round, so a skill installed meanwhile is seen.
+        const skills = this.roleSkills();
+        this.toolList = skills.length ? this.tools.toolsFor(this.record.rolePolicy) : this.tools.TOOLS;
         let reply = '';
         let calls = null;
         for await (const part of streamChat({
           baseUrl: this.baseUrl(), key, model: this.record.model, fetch: this.fetch, signal: ctrl.signal,
-          messages: [{ role: 'system', content: systemPrompt(this.record) }, ...this.messages],
-          tools: this.tools.TOOLS,
+          messages: [{ role: 'system', content: systemPrompt(this.record, skills) }, ...this.messages],
+          tools: this.toolList,
         })) {
           if (part.delta) {
             reply += part.delta;
@@ -242,14 +258,15 @@ class RouterAgent {
     } catch {
       args = undefined;
     }
-    const known = this.tools.TOOLS.some((t) => t.function.name === call.name);
+    const known = this.toolList.some((t) => t.function.name === call.name);
+    if (known && call.name === 'load_skill') return this.runLoadSkill(call, args);
     const action = known && args !== undefined ? this.tools.toAction(call.name, args) : null;
     this.emitEvent({ type: 'tool_start', toolUseId: call.id, tool: call.name, summary: action?.summary ?? call.name, input: displayInput(args) });
 
     let content;
     let isError = true;
     if (!known) {
-      content = `Ditolak: tool tidak dikenal: ${call.name}. Tool yang ada: ${this.tools.TOOLS.map((t) => t.function.name).join(', ')}.`;
+      content = `Ditolak: tool tidak dikenal: ${call.name}. Tool yang ada: ${this.toolList.map((t) => t.function.name).join(', ')}.`;
     } else if (!action) {
       content = `invalid arguments: argumen ${call.name} bukan JSON yang valid atau tidak lengkap.`;
     } else {
@@ -268,6 +285,31 @@ class RouterAgent {
         }
       }
     }
+    this.emitEvent({ type: 'tool_end', toolUseId: call.id, isError, output: cap(content, DISPLAY_CAP) });
+    return content;
+  }
+
+  // The role's skills that exist now; [] when there are none or listing fails.
+  roleSkills() {
+    if (!this.record.rolePolicy?.skills?.length || !this.tools.skillsOf) return [];
+    try {
+      return this.tools.skillsOf(this.record.rolePolicy, this.listSkills());
+    } catch {
+      return [];
+    }
+  }
+
+  // load_skill reads only the role's own skills, so it skips decide() and the approval card.
+  runLoadSkill(call, args) {
+    const label = args && typeof args.name === 'string' ? (args.path ? `${args.name}/${args.path}` : args.name) : 'load_skill';
+    this.emitEvent({ type: 'tool_start', toolUseId: call.id, tool: call.name, summary: label, input: displayInput(args) });
+    let content;
+    try {
+      content = this.tools.loadSkill(args, { allowed: this.record.rolePolicy?.skills ?? [], skills: this.listSkills() });
+    } catch (err) {
+      content = `Gagal: ${err.message}`;
+    }
+    const isError = /^(Ditolak|Gagal|invalid arguments|Skill tidak tersedia)/.test(content);
     this.emitEvent({ type: 'tool_end', toolUseId: call.id, isError, output: cap(content, DISPLAY_CAP) });
     return content;
   }

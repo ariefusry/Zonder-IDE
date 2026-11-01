@@ -15,6 +15,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { parseLine, summarize } = require('./claude-parse.js');
 const { IllegalTransition } = require('../store.js');
+const skillsModule = require('../skills.js');
+const { claudeSkillName } = skillsModule;
 
 const PERMISSION_SETTINGS = {
   permissions: {
@@ -41,7 +43,10 @@ const CLAUDE_MODELS = ['opus', 'sonnet', 'haiku'];
 const PERSISTED = new Set(['message', 'tool_start', 'tool_end', 'error', 'exit']);
 const STDERR_KEEP = 4000;
 
-function buildArgs(record) {
+// skills: every skill Zonder knows (skills.js). A role's unpicked skills are
+// blocked by name; the spike for settings plan Task 17 showed
+// --disallowedTools "Skill(name)" stops Claude from invoking that skill.
+function buildArgs(record, skills = []) {
   const args = [
     '-p',
     '--input-format', 'stream-json',
@@ -55,6 +60,14 @@ function buildArgs(record) {
     '--model', record.model,
   ];
   if (record.persona && record.persona.trim()) args.push('--append-system-prompt', record.persona);
+  const policy = record.rolePolicy;
+  if (policy?.disableSkills) {
+    args.push('--disable-slash-commands');
+  } else if (Array.isArray(policy?.skills)) {
+    const picked = new Set(policy.skills);
+    const blocked = skills.filter((s) => !picked.has(s.id)).map((s) => `Skill(${claudeSkillName(s)})`);
+    if (blocked.length) args.push('--disallowedTools', ...blocked);
+  }
   if (record.sessionId) args.push('--resume', record.sessionId);
   return args;
 }
@@ -110,12 +123,13 @@ class ClaudeAgent {
   // onApproval(req) may return a Promise<{behavior, message?}>; its answer goes
   // back to the CLI. With `approvals` and no onApproval, requests run through
   // Approvals.handle with this agent's worktree and main checkout.
-  constructor({ record, store, persistence, approvals, onApproval, spawn = childProcess.spawn, kill = killTree, resolveExe = resolveClaudeExe, doneIdleMs = 30000, startQuietMs = 5000 }) {
+  constructor({ record, store, persistence, approvals, onApproval, spawn = childProcess.spawn, kill = killTree, resolveExe = resolveClaudeExe, doneIdleMs = 30000, startQuietMs = 5000, listSkills = skillsModule.listSkills }) {
     this.record = record;
     this.store = store;
     this.persistence = persistence;
     this.onApproval = onApproval ?? (approvals && ((req) => approvals.handle(record.id, toAction(req.tool, req.input), { worktree: record.worktreePath, mainRepo: record.workspace })));
     this.spawn = spawn;
+    this.listSkills = listSkills;
     this.kill = kill;
     this.resolveExe = resolveExe;
     this.doneIdleMs = doneIdleMs;
@@ -132,6 +146,16 @@ class ClaudeAgent {
     this.idleTimer = null;
   }
 
+  // Every skill Zonder knows, for blocking the ones the role did not pick; [] on failure.
+  skillList() {
+    if (!Array.isArray(this.record.rolePolicy?.skills)) return [];
+    try {
+      return this.listSkills();
+    } catch {
+      return [];
+    }
+  }
+
   async start() {
     if (this.child) return;
     this.setStatus('starting');
@@ -142,7 +166,7 @@ class ClaudeAgent {
       return;
     }
 
-    const child = this.spawn(exe, buildArgs(this.record), { cwd: this.record.worktreePath, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = this.spawn(exe, buildArgs(this.record, this.skillList()), { cwd: this.record.worktreePath, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     this.child = child;
     this.stdoutBuf = '';
     this.stderrTail = '';

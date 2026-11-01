@@ -85,7 +85,11 @@ function showSettingsSection(section) {
     if (btn.dataset.section === section) btn.setAttribute('aria-current', 'page');
     else btn.removeAttribute('aria-current');
   }
-  if (section === 'roles') loadRoles();
+  if (section === 'roles') {
+    loadRoles();
+    loadSkills();
+  }
+  if (section === 'skills') loadSkills();
   if (section === 'providers') {
     showRouterError('');
     setField('rkUrl').value = '';
@@ -130,6 +134,14 @@ function initSettings() {
   });
   setField('ccCheck').addEventListener('click', checkClaudeStatus);
   initRolesPane();
+  setField('roleSkillFilter').addEventListener('input', renderRoleSkills);
+  setField('roleSkillChecks').addEventListener('change', (e) => {
+    const box = e.target.closest('input[type=checkbox]');
+    if (!box) return;
+    if (box.checked) rolesUi.skills.add(box.value);
+    else rolesUi.skills.delete(box.value);
+    renderRoleSkillCount();
+  });
 
   const url = setField('rkUrl');
   const input = setField('rkKey');
@@ -166,7 +178,7 @@ function initSettings() {
 
 // Roles pane (settings spec §4.3). Main validates and stores; this pane only
 // edits one role at a time. A new role exists only once it is saved.
-const rolesUi = { list: null, error: null, loading: false, current: null, isNew: false, dirty: false, pendingSwitch: null, confirm: null, busy: false };
+const rolesUi = { skills: new Set(), list: null, error: null, loading: false, current: null, isNew: false, dirty: false, pendingSwitch: null, confirm: null, busy: false };
 
 function setRoleNames(list) {
   state.roleNames = new Set(list.map((r) => r.name));
@@ -252,6 +264,10 @@ function fillRoleForm(role) {
   setField('rolePersona').value = role.persona;
   setField('roleWrite').value = role.write;
   setField('roleShell').value = role.shell;
+  rolesUi.skills = new Set(role.skills ?? []);
+  setField('roleNoSkills').checked = Boolean(role.disableSkills);
+  setField('roleSkillFilter').value = '';
+  renderRoleSkills();
   setField('roleDelete').hidden = builtin || rolesUi.isNew;
   setField('roleReset').hidden = !builtin;
   showRoleError('');
@@ -295,7 +311,8 @@ async function roleAction(label, fn) {
 
 function initRolesPane() {
   const form = setField('roleForm');
-  form.addEventListener('input', () => { rolesUi.dirty = true; });
+  // Typing in the skill filter is not an edit.
+  form.addEventListener('input', (e) => { if (e.target.id !== 'roleSkillFilter') rolesUi.dirty = true; });
   setField('roleAdd').addEventListener('click', () => switchRole(null));
   setField('roleConfirmNo').addEventListener('click', () => showRoleConfirm(null));
   setField('roleConfirmYes').addEventListener('click', () => {
@@ -320,8 +337,8 @@ function initRolesPane() {
       persona: setField('rolePersona').value,
       write: setField('roleWrite').value,
       shell: setField('roleShell').value,
-      skills: cur.skills ?? [],
-      disableSkills: Boolean(cur.disableSkills),
+      skills: [...rolesUi.skills],
+      disableSkills: setField('roleNoSkills').checked,
     };
     // Renaming a custom role saves it under the new name, then removes the old one.
     const renamed = !rolesUi.isNew && !cur.builtin && name !== cur.name;
@@ -353,4 +370,88 @@ function initRolesPane() {
       run: () => roleAction('Mengembalikan...', async () => (await window.zonder.resetRole(cur.name)).name),
     });
   });
+}
+
+// Skills (settings spec §4.4): the list comes from main without folder paths.
+const skillsUi = { list: null, error: null, loading: false };
+
+async function loadSkills() {
+  if (skillsUi.loading) return;
+  skillsUi.loading = true;
+  skillsUi.error = null;
+  renderSkillsPane();
+  try {
+    skillsUi.list = await window.zonder.listSkills();
+  } catch (err) {
+    skillsUi.error = ipcMessage(err);
+  }
+  skillsUi.loading = false;
+  renderSkillsPane();
+  renderRoleSkills();
+}
+
+// The empty, loading and error lines both panes share; null when the list is ready.
+function skillsStatus(retry) {
+  if (skillsUi.error) {
+    const btn = el('button', { type: 'button', class: 'btn' }, 'Coba lagi');
+    btn.addEventListener('click', retry);
+    return [el('p', { class: 'form-error' }, `Skill gagal dibaca: ${skillsUi.error}`), btn];
+  }
+  if (!skillsUi.list) return [el('p', { class: 'hint' }, 'Membaca skill...')];
+  if (!skillsUi.list.length) return [el('p', { class: 'hint' }, 'Belum ada skill. Pasang skill di ~/.claude/skills atau lewat plugin Claude Code.')];
+  return null;
+}
+
+function bySource(list) {
+  const groups = new Map();
+  for (const s of list) {
+    if (!groups.has(s.source)) groups.set(s.source, []);
+    groups.get(s.source).push(s);
+  }
+  return groups;
+}
+
+const sourceLabel = (source) => (source === 'user' ? 'Skill pribadi' : `Plugin ${source}`);
+
+function renderSkillsPane() {
+  const box = setField('skillList');
+  const status = skillsStatus(loadSkills);
+  if (status) {
+    box.replaceChildren(...status);
+    return;
+  }
+  box.replaceChildren(el('p', { class: 'hint' }, `${skillsUi.list.length} skill ditemukan.`));
+  for (const [source, items] of bySource(skillsUi.list)) {
+    box.append(el('h2', { class: 'set-label' }, `${sourceLabel(source)} (${items.length})`),
+      el('div', { class: 'set-card skill-card' }, ...items.map((s) => el('div', { class: 'skill-row' },
+        el('b', {}, s.name),
+        el('span', { class: 'hint' }, s.description || 'Tanpa deskripsi.')))));
+  }
+}
+
+function renderRoleSkillCount() {
+  const n = rolesUi.skills.size;
+  setField('roleSkillCount').textContent = n ? `${n} dipilih` : 'belum ada yang dipilih';
+}
+
+function renderRoleSkills() {
+  const box = setField('roleSkillChecks');
+  renderRoleSkillCount();
+  const status = skillsStatus(loadSkills);
+  if (status) {
+    box.replaceChildren(...status);
+    return;
+  }
+  const q = setField('roleSkillFilter').value.trim().toLowerCase();
+  const shown = skillsUi.list.filter((s) => !q || s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q) || s.source.toLowerCase().includes(q));
+  box.replaceChildren();
+  if (!shown.length) box.append(el('p', { class: 'hint' }, 'Tidak ada skill yang cocok.'));
+  for (const [source, items] of bySource(shown)) {
+    box.append(el('div', { class: 'skill-group' }, sourceLabel(source)));
+    for (const s of items) {
+      box.append(el('label', { class: 'skill-check' },
+        el('input', { type: 'checkbox', value: s.id, checked: rolesUi.skills.has(s.id) ? '' : null }),
+        el('span', {}, el('b', {}, s.name), el('small', {}, s.description || 'Tanpa deskripsi.'))));
+    }
+  }
 }

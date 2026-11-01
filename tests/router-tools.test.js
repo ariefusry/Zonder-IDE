@@ -132,3 +132,56 @@ test('run_command for real: output comes back from cmd.exe', { skip: process.pla
     t.cleanup();
   }
 });
+
+// load_skill (settings plan Task 17): read-only, no decide, only the role's skills.
+function skillFixture() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'zonder-rts-'));
+  const dir = path.join(root, 'ui');
+  fs.mkdirSync(path.join(dir, 'references'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'SKILL.md'), '---\nname: ui\ndescription: Aturan UI.\n---\nSatu aksen saja.');
+  fs.writeFileSync(path.join(dir, 'references', 'a.md'), 'referensi a');
+  const skills = [{ id: 'user:ui', name: 'ui', description: 'Aturan UI.', source: 'user', dir }];
+  return { skills, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
+}
+
+test('toolsFor adds load_skill only when the role has skills', () => {
+  const { toolsFor } = require('../src/main/agents/router-tools.js');
+  assert.deepEqual(toolsFor({ skills: [] }).map((t) => t.function.name), ['read_file', 'list_dir', 'write_file', 'run_command']);
+  assert.deepEqual(toolsFor(null).map((t) => t.function.name), ['read_file', 'list_dir', 'write_file', 'run_command']);
+  assert.deepEqual(toolsFor({ skills: ['user:ui'] }).map((t) => t.function.name), ['read_file', 'list_dir', 'write_file', 'run_command', 'load_skill']);
+});
+
+test('load_skill reads a skill of the role by name or id, with an optional relative path', () => {
+  const { loadSkill } = require('../src/main/agents/router-tools.js');
+  const f = skillFixture();
+  try {
+    assert.match(loadSkill({ name: 'ui' }, { allowed: ['user:ui'], skills: f.skills }), /Satu aksen saja\./);
+    assert.match(loadSkill({ name: 'user:ui' }, { allowed: ['user:ui'], skills: f.skills }), /Satu aksen saja\./);
+    assert.equal(loadSkill({ name: 'ui', path: 'references/a.md' }, { allowed: ['user:ui'], skills: f.skills }), 'referensi a');
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('load_skill for a skill not in rolePolicy.skills -> tool result "Skill tidak tersedia untuk peran ini."', () => {
+  const { loadSkill } = require('../src/main/agents/router-tools.js');
+  const f = skillFixture();
+  try {
+    assert.equal(loadSkill({ name: 'ui' }, { allowed: [], skills: f.skills }), 'Skill tidak tersedia untuk peran ini.');
+    assert.equal(loadSkill({ name: 'lain' }, { allowed: ['user:ui'], skills: f.skills }), 'Skill tidak tersedia untuk peran ini.');
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('load_skill path escape -> tool result with the refusal, no throw', () => {
+  const { loadSkill } = require('../src/main/agents/router-tools.js');
+  const f = skillFixture();
+  try {
+    assert.match(loadSkill({ name: 'ui', path: '../../x' }, { allowed: ['user:ui'], skills: f.skills }), /^Ditolak: .*di luar folder skill/);
+    assert.match(loadSkill({ name: 'ui', path: 'C:\\Windows\\win.ini' }, { allowed: ['user:ui'], skills: f.skills }), /^Ditolak: .*relatif/);
+    assert.match(loadSkill({}, { allowed: ['user:ui'], skills: f.skills }), /^invalid arguments/);
+  } finally {
+    f.cleanup();
+  }
+});

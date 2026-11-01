@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { isInside, isCredentialPath } = require('../policy/paths.js');
 const { killTree } = require('./claude-agent.js');
+const skillsModule = require('../skills.js');
 
 const OUTPUT_CAP = 20000;
 const COMMAND_TIMEOUT_MS = 60000;
@@ -28,6 +29,38 @@ const TOOLS = [
   }, ['path', 'content']),
   fn('run_command', 'Jalankan satu perintah cmd.exe di root worktree. Batas waktu 60 detik.', { command: { type: 'string', description: 'Perintah, misalnya npm test.' } }, ['command']),
 ];
+
+// Only for roles with skills (settings spec §4.4). Read-only and limited to the
+// role's own skills, so it runs without decide() and without an approval card.
+const LOAD_SKILL = fn('load_skill', 'Muat isi skill peranmu. Tanpa path: SKILL.md. Dengan path: file pendukung di folder skill itu.', {
+  name: { type: 'string', description: 'Nama skill dari daftar di prompt sistem.' },
+  path: { type: 'string', description: 'Opsional. Path relatif di dalam folder skill, misalnya references/a.md.' },
+}, ['name']);
+
+function toolsFor(rolePolicy) {
+  return rolePolicy?.skills?.length ? [...TOOLS, LOAD_SKILL] : TOOLS;
+}
+
+// The role's skills that exist now, in the order they were listed.
+function skillsOf(rolePolicy, skills) {
+  const allowed = new Set(rolePolicy?.skills ?? []);
+  return skills.filter((s) => allowed.has(s.id));
+}
+
+// Tool result text; never throws.
+function loadSkill(args, { allowed = [], skills = skillsModule.listSkills() } = {}) {
+  if (!args || typeof args !== 'object' || typeof args.name !== 'string' || !args.name || (args.path !== undefined && typeof args.path !== 'string')) {
+    return 'invalid arguments: load_skill butuh name (teks) dan path opsional (teks).';
+  }
+  const mine = skills.filter((s) => allowed.includes(s.id));
+  const skill = mine.find((s) => s.id === args.name) ?? mine.find((s) => s.name === args.name);
+  if (!skill) return 'Skill tidak tersedia untuk peran ini.';
+  try {
+    return skillsModule.readSkillFile(skill, args.path || 'SKILL.md');
+  } catch (err) {
+    return `Ditolak: ${err.message}`;
+  }
+}
 
 const isText = (v) => typeof v === 'string' && v.length > 0;
 
@@ -120,4 +153,4 @@ async function execTool(name, args, ctx) {
   }
 }
 
-module.exports = { TOOLS, toAction, execTool, OUTPUT_CAP, COMMAND_TIMEOUT_MS };
+module.exports = { TOOLS, LOAD_SKILL, toolsFor, skillsOf, loadSkill, toAction, execTool, OUTPUT_CAP, COMMAND_TIMEOUT_MS };

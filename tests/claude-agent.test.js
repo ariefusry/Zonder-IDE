@@ -524,3 +524,28 @@ test('setModel refuses models outside the allowlist', async () => {
   assert.equal(s.record.model, 'haiku');
   assert.equal(s.child.writes.length, 0);
 });
+
+// Skills per role (settings plan Task 17). The spike showed --disallowedTools
+// "Skill(name)" blocks that skill, so every listed skill the role did not pick
+// is blocked; disableSkills turns all of them off.
+test('rolePolicy.disableSkills -> buildArgs contains --disable-slash-commands', () => {
+  const args = buildArgs({ model: 'haiku', rolePolicy: { skills: [], disableSkills: true } });
+  assert.ok(args.includes('--disable-slash-commands'));
+  assert.ok(!buildArgs({ model: 'haiku', rolePolicy: { skills: [], disableSkills: false } }).includes('--disable-slash-commands'));
+});
+
+test('buildArgs blocks every known skill the role did not pick', () => {
+  const skills = [
+    { id: 'user:ui', name: 'ui', source: 'user' },
+    { id: 'kit:deck', name: 'deck', source: 'kit' },
+    { id: 'user:graph', name: 'graph', source: 'user' },
+  ];
+  const args = buildArgs({ model: 'haiku', rolePolicy: { skills: ['user:ui'], disableSkills: false } }, skills);
+  const i = args.indexOf('--disallowedTools');
+  assert.ok(i > 0);
+  assert.deepEqual(args.slice(i + 1, i + 3), ['Skill(kit:deck)', 'Skill(graph)']);
+  // A record from before roles had skills keeps every skill, as before.
+  assert.ok(!buildArgs({ model: 'haiku' }, skills).includes('--disallowedTools'));
+  // Every skill picked: nothing to block.
+  assert.ok(!buildArgs({ model: 'haiku', rolePolicy: { skills: ['user:ui', 'kit:deck', 'user:graph'] } }, skills).includes('--disallowedTools'));
+});
