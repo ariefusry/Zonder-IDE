@@ -59,11 +59,15 @@ function renderComposer(state, handlers) {
   const queued = a ? state.queue[a.id] || 0 : 0;
   document.getElementById('queue').textContent = queued ? `${queued} pesan menunggu` : '';
 
+  const effort = document.getElementById('effort');
   model.hidden = !a;
+  effort.hidden = !a;
+  document.getElementById('effortNote').textContent = a?.effortPending ? 'Effort berlaku setelah giliran ini' : '';
   if (!a) return;
   // Rebuild the select only when its content changes, so an open dropdown survives events.
-  const models = state.mock ? state.models : a.kind === 'router' ? state.router?.models ?? [] : CLAUDE_MODELS;
-  const key = `${a.id}|${a.model}|${state.mock}|${models.join(',')}`;
+  const models = state.mock ? state.models : a.kind === 'router' ? state.router?.models ?? [] : state.options?.claudeModels ?? [];
+  const efforts = (a.kind === 'router' ? state.options?.routerEfforts : state.options?.claudeEfforts) ?? [];
+  const key = `${a.id}|${a.model}|${a.effort}|${state.mock}|${models.join(',')}|${efforts.join(',')}`;
   if (key === modelKey) return;
   modelKey = key;
   model.replaceChildren();
@@ -73,6 +77,11 @@ function renderComposer(state, handlers) {
   model.disabled = state.mock;
   model.title = state.mock ? 'Agent contoh: model tidak bisa diganti' : 'Ganti model untuk pesan berikutnya';
   model.onchange = () => handlers.onModel(a.id, model.value);
+  effort.replaceChildren(el('option', { value: '' }, 'effort bawaan'));
+  for (const e of efforts) effort.append(el('option', { value: e, selected: e === a.effort ? '' : null }, `effort ${e}`));
+  effort.disabled = state.mock;
+  effort.title = a.kind === 'router' ? 'Efek effort bergantung pada model' : 'Agent Claude dimulai ulang dengan --resume saat tidak sibuk';
+  effort.onchange = () => handlers.onEffort(a.id, effort.value || null);
 }
 
 function renderMessages(state, handlers) {

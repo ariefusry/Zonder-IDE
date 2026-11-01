@@ -463,11 +463,13 @@ function renderRoleSkills() {
 
 // Workspace, Agent and Notifikasi (settings spec §4.5–§4.7). Main validates
 // every value again; the forms only show its message.
-const prefsUi = { settings: null, busy: false };
+const prefsUi = { settings: null, busy: false, options: null };
+const CUSTOM_DEFAULT = '__custom';
 
 async function loadPrefs() {
   try {
     prefsUi.settings = await window.zonder.getSettings();
+    prefsUi.options ??= await window.zonder.spawnOptions();
   } catch (err) {
     for (const id of ['wsError', 'agError', 'ntError2']) showPrefsMessage(id, `Pengaturan gagal dibaca: ${ipcMessage(err)}`);
     return;
@@ -501,11 +503,30 @@ function fillPrefs() {
   const stop = setField('wsForm').elements.wsStop;
   stop.value = workspace.stopCleanup ?? '';
   fillBranches(workspace.defaultRepo);
+  fillAgentDefaults(agent);
   setField('agRounds').value = agent.maxToolRounds;
   setField('agTimeout').value = agent.commandTimeoutSec;
   setField('ntApproval').checked = notify.approval;
   setField('ntDone').checked = notify.done;
   setField('ntError').checked = notify.error;
+}
+
+function fillAgentDefaults(agent) {
+  const o = prefsUi.options;
+  const model = setField('agClaudeModel');
+  const known = o.claudeModels.includes(agent.claude.model);
+  model.replaceChildren(...o.claudeModels.map((m) => el('option', { value: m }, m)), el('option', { value: CUSTOM_DEFAULT }, 'ID model lain...'));
+  model.value = known ? agent.claude.model : CUSTOM_DEFAULT;
+  setField('agClaudeCustom').value = known ? '' : agent.claude.model;
+  setField('agCustomRow').hidden = known;
+  const efforts = (select, list, value) => {
+    select.replaceChildren(el('option', { value: '' }, 'Bawaan'), ...list.map((e) => el('option', { value: e }, e)));
+    select.value = value ?? '';
+  };
+  efforts(setField('agClaudeEffort'), o.claudeEfforts, agent.claude.effort);
+  efforts(setField('agRouterEffort'), o.routerEfforts, agent.router.effort);
+  setField('agRouterModel').value = agent.router.model ?? '';
+  setField('agRouterModels').replaceChildren(...(state.router?.models ?? []).map((m) => el('option', { value: m })));
 }
 
 // Saves one pane's patch; the status line says what happened.
@@ -554,7 +575,13 @@ function initPrefsPanes() {
   });
   setField('agentForm').addEventListener('submit', (e) => {
     e.preventDefault();
-    savePrefs({ agent: { maxToolRounds: intField('agRounds'), commandTimeoutSec: intField('agTimeout') } }, { error: 'agError', saved: 'agSaved', button: 'agSave' });
+    const pick = setField('agClaudeModel').value;
+    const claude = { model: pick === CUSTOM_DEFAULT ? setField('agClaudeCustom').value.trim() : pick, effort: setField('agClaudeEffort').value || null };
+    const router = { model: setField('agRouterModel').value.trim() || null, effort: setField('agRouterEffort').value || null };
+    savePrefs({ agent: { claude, router, maxToolRounds: intField('agRounds'), commandTimeoutSec: intField('agTimeout') } }, { error: 'agError', saved: 'agSaved', button: 'agSave' });
+  });
+  setField('agClaudeModel').addEventListener('change', () => {
+    setField('agCustomRow').hidden = setField('agClaudeModel').value !== CUSTOM_DEFAULT;
   });
   setField('ntForm').addEventListener('submit', (e) => {
     e.preventDefault();

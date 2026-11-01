@@ -1,7 +1,8 @@
 // Spawn modal: name, role (fills an editable prompt), kind + model, workspace
 // picked in the native dialog, base branch. Main validates everything again.
 
-const spawnUi = { options: null, workspace: null, lastDefault: '', busy: false, onRouter: null };
+const spawnUi = { options: null, workspace: null, lastDefault: '', busy: false, onRouter: null, defaults: null };
+const CUSTOM_MODEL = '__custom';
 const KIND_LABELS = { claude: 'Claude Code', router: '9router' };
 const PROMPT_HINTS = {
   claude: 'Ditambahkan ke prompt bawaan Claude Code. Aturan izin peran tetap ditegakkan Zonder, apa pun isi prompt ini.',
@@ -39,7 +40,7 @@ function renderWorkspace() {
 
 function setSpawnBusy(busy) {
   spawnUi.busy = busy;
-  for (const id of ['spName', 'spRole', 'spPrompt', 'spKind', 'spModel', 'spPick', 'spCancel', 'spSubmit']) spawnField(id).disabled = busy;
+  for (const id of ['spName', 'spRole', 'spPrompt', 'spKind', 'spModel', 'spModelCustom', 'spEffort', 'spPick', 'spCancel', 'spSubmit']) spawnField(id).disabled = busy;
   spawnField('spBranch').disabled = busy || !spawnUi.workspace?.isRepo;
   spawnField('spSubmit').textContent = busy ? 'Membuat worktree...' : 'Spawn';
 }
@@ -64,10 +65,10 @@ async function openSpawnModal() {
     }
     fillSelect(role, names, keep);
     // form.reset() puts the kind back to its first option; the model list must follow.
-    applyKind();
     applyRolePrompt();
   }
-  if (!spawnUi.workspace) await prefillWorkspace();
+  await prefillWorkspace();
+  if (o) applyKind();
   renderWorkspace();
   dialog.showModal();
   spawnField('spName').focus();
@@ -77,13 +78,14 @@ async function openSpawnModal() {
 // or unreadable leaves the field empty, as before Settings existed.
 async function prefillWorkspace() {
   try {
-    const { workspace } = await window.zonder.getSettings();
-    if (!workspace.defaultRepo) return;
+    const { workspace, agent } = await window.zonder.getSettings();
+    spawnUi.defaults = agent;
+    if (spawnUi.workspace || !workspace.defaultRepo) return;
     const branches = await window.zonder.listBranches(workspace.defaultRepo);
     if (!branches.length) return;
     spawnUi.workspace = { path: workspace.defaultRepo, isRepo: true, branches, current: workspace.baseBranch };
   } catch {
-    spawnUi.workspace = null;
+    // Settings or the repo unreadable: the fields stay as they are.
   }
 }
 
@@ -101,10 +103,24 @@ async function applyKind() {
   const model = spawnField('spModel');
   spawnField('spPromptHint').textContent = PROMPT_HINTS[kind];
   setSpawnError('');
+  const d = spawnUi.defaults?.[kind === 'router' ? 'router' : 'claude'];
+  const efforts = (kind === 'router' ? spawnUi.options.routerEfforts : spawnUi.options.claudeEfforts) ?? [];
+  const effort = spawnField('spEffort');
+  effort.replaceChildren(el('option', { value: '' }, 'Bawaan'), ...efforts.map((e) => el('option', { value: e, selected: e === d?.effort ? '' : null }, e)));
+  spawnField('spEffortHint').textContent = kind === 'router' ? 'Dikirim sebagai reasoning_effort; efeknya bergantung pada model.' : 'Bawaan: tanpa --effort.';
   if (kind !== 'router') {
-    fillSelect(model, spawnUi.options.models, 'sonnet');
+    const list = spawnUi.options.claudeModels ?? spawnUi.options.models;
+    const want = d?.model ?? 'sonnet';
+    fillSelect(model, list, list.includes(want) ? want : list[0]);
+    model.append(el('option', { value: CUSTOM_MODEL }, 'ID model lain...'));
+    if (!list.includes(want)) {
+      model.value = CUSTOM_MODEL;
+      spawnField('spModelCustom').value = want;
+    }
+    applyModelChoice();
     return;
   }
+  spawnField('spCustomRow').hidden = true;
   model.replaceChildren(el('option', {}, 'Memuat model...'));
   model.disabled = true;
   let r;
@@ -117,11 +133,23 @@ async function applyKind() {
   if (spawnField('spKind').value !== 'router') return;
   model.disabled = spawnUi.busy;
   if (r.connected && r.models.length) {
-    fillSelect(model, r.models, r.models[0]);
+    const want = spawnUi.defaults?.router?.model;
+    fillSelect(model, r.models, r.models.includes(want) ? want : r.models[0]);
     return;
   }
   model.replaceChildren(el('option', {}, 'Tidak ada model'));
   setSpawnError(!r.baseUrl || !r.hasKey ? 'URL atau kunci 9router belum diisi. Klik 9router di sidebar untuk mengisinya.' : r.connected ? 'Router tidak mengembalikan model.' : `9router tidak bisa dihubungi: ${r.error}`);
+}
+
+// "ID model lain..." opens a text field for any claude-* id; main checks it again.
+function applyModelChoice() {
+  const custom = spawnField('spKind').value !== 'router' && spawnField('spModel').value === CUSTOM_MODEL;
+  spawnField('spCustomRow').hidden = !custom;
+}
+
+function chosenModel() {
+  const v = spawnField('spModel').value;
+  return v === CUSTOM_MODEL ? spawnField('spModelCustom').value.trim() : v;
 }
 
 function resetSpawnForm() {
@@ -136,6 +164,7 @@ function initSpawnModal({ onSpawned, onRouter }) {
   const dialog = spawnField('spawnDialog');
   spawnUi.onRouter = onRouter;
   spawnField('spKind').addEventListener('change', applyKind);
+  spawnField('spModel').addEventListener('change', applyModelChoice);
   spawnField('spawn').addEventListener('click', openSpawnModal);
   spawnField('spRole').addEventListener('change', applyRolePrompt);
   spawnField('spCancel').addEventListener('click', () => dialog.close());
@@ -186,7 +215,8 @@ function initSpawnModal({ onSpawned, onRouter }) {
         role: spawnField('spRole').value,
         systemPrompt: spawnField('spPrompt').value,
         kind: spawnField('spKind').value,
-        model: spawnField('spModel').value,
+        model: chosenModel(),
+        effort: spawnField('spEffort').value || null,
         workspace: spawnUi.workspace.path,
         baseBranch: spawnField('spBranch').value,
       });

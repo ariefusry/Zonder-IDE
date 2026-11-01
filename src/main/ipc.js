@@ -3,7 +3,8 @@
 
 const { randomBytes } = require('node:crypto');
 const path = require('node:path');
-const { CLAUDE_MODELS } = require('./agents/claude-agent.js');
+const { CLAUDE_MODELS, CLAUDE_EFFORTS, isClaudeModelId } = require('./agents/claude-agent.js');
+const { ROUTER_EFFORTS } = require('./agents/router-agent.js');
 const { createRoles, snapshot, policyForResume } = require('./roles.js');
 const { RouterOffline } = require('./agents/router-client.js');
 
@@ -15,6 +16,7 @@ const CHANNELS = {
   sendMessage: 'zonder:sendMessage',
   interruptAgent: 'zonder:interruptAgent',
   setModel: 'zonder:setModel',
+  setEffort: 'zonder:setEffort',
   spawnOptions: 'zonder:spawnOptions',
   selectWorkspace: 'zonder:selectWorkspace',
   listBranches: 'zonder:listBranches',
@@ -127,7 +129,13 @@ function registerIpc({
     }
   }
 
-  const modelsFor = (kind) => (kind === 'router' ? routerModels : CLAUDE_MODELS);
+  // Claude takes any well-formed claude-* id; 9router only what /models listed.
+  const modelOk = (kind, model) => (kind === 'router' ? routerModels.includes(model) : isClaudeModelId(model));
+  const checkEffort = (kind, effort) => {
+    if (effort === null || effort === undefined) return null;
+    if (!(kind === 'router' ? ROUTER_EFFORTS : CLAUDE_EFFORTS).includes(effort)) throw new Error(`Effort tidak dikenal: ${effort}`);
+    return effort;
+  };
 
   const saveRegistry = () => persistence?.saveAgents(store.list().filter((r) => !r.sample));
   const knownAgent = (agentId) => {
@@ -173,7 +181,8 @@ function registerIpc({
       if (!health.hasKey) throw new Error('Kunci 9router belum diisi. Isi lewat tombol 9router di sidebar.');
       if (!health.connected) throw new Error(`9router tidak bisa dipakai: ${health.error}`);
     }
-    if (!modelsFor(cfg.kind).includes(cfg.model)) throw new Error('Model tidak dikenal.');
+    if (!modelOk(cfg.kind, cfg.model)) throw new Error('Model tidak dikenal.');
+    const effort = checkEffort(cfg.kind, cfg.effort);
     if (typeof cfg.systemPrompt !== 'string' || cfg.systemPrompt.length > MAX_PROMPT) throw new Error(`Prompt harus teks, paling banyak ${MAX_PROMPT} karakter.`);
     await seeded;
     const repo = cfg.workspace;
@@ -184,7 +193,7 @@ function registerIpc({
     const taken = new Set(store.list().map((r) => r.slug).filter(Boolean));
     const tree = await worktree.createWorktree({ repo, baseBranch: cfg.baseBranch, name, agentId: id, taken });
     const record = store.add({
-      id, name, slug: tree.slug, role: role.name, rolePolicy: snapshot(role), kind: cfg.kind, model: cfg.model, persona: cfg.systemPrompt,
+      id, name, slug: tree.slug, role: role.name, rolePolicy: snapshot(role), kind: cfg.kind, model: cfg.model, effort, persona: cfg.systemPrompt,
       workspace: repo, baseBranch: cfg.baseBranch, worktreePath: tree.path, branch: tree.branch,
       sessionId: null, status: 'stopped', createdAt: Date.now(),
     });
@@ -222,7 +231,7 @@ function registerIpc({
 
   ipcMain.handle(CHANNELS.spawnOptions, (_e, ...args) => {
     expectArgs(args, 0);
-    return { roles: roles.list().map((r) => ({ role: r.name, prompt: r.persona })), models: CLAUDE_MODELS, kinds: KINDS };
+    return { roles: roles.list().map((r) => ({ role: r.name, prompt: r.persona })), models: CLAUDE_MODELS, claudeModels: CLAUDE_MODELS, claudeEfforts: CLAUDE_EFFORTS, routerEfforts: ROUTER_EFFORTS, kinds: KINDS };
   });
 
   ipcMain.handle(CHANNELS.claudeStatus, (_e, ...args) => {
@@ -458,8 +467,15 @@ function registerIpc({
     expectArgs(args, 2);
     const [agentId, model] = args;
     const agent = runningAgent(agentId);
-    if (!modelsFor(store.get(agentId).kind).includes(model)) throw new Error(`invalid model: ${model}`);
+    if (!modelOk(store.get(agentId).kind, model)) throw new Error(`invalid model: ${model}`);
     agent.setModel(model);
+  });
+
+  ipcMain.handle(CHANNELS.setEffort, async (_e, ...args) => {
+    expectArgs(args, 2);
+    const [agentId, effort] = args;
+    const agent = runningAgent(agentId);
+    return agent.setEffort(checkEffort(store.get(agentId).kind, effort));
   });
 
   store.subscribe((evt) => {

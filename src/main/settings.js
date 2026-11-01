@@ -4,6 +4,8 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { CLAUDE_EFFORTS, isClaudeModelId } = require('./agents/claude-agent.js');
+const { ROUTER_EFFORTS } = require('./agents/router-agent.js');
 
 const CLEANUPS = ['keep', 'worktree', 'worktree+branch'];
 
@@ -24,6 +26,10 @@ const text = (max, msg, { nullable = false } = {}) => (v) => {
   if (typeof v !== 'string' || !v.trim() || v.length > max) throw new Error(msg);
   return v.trim();
 };
+const oneOf = (list) => (v) => {
+  if (v !== null && !list.includes(v)) throw new Error(`Effort tidak dikenal: ${v}`);
+  return v;
+};
 const bool = (msg) => (v) => {
   if (typeof v !== 'boolean') throw new Error(msg);
   return v;
@@ -41,13 +47,16 @@ const RULES = {
   },
   agent: {
     claude: {
-      model: text(100, 'Model Claude harus 1 sampai 100 karakter.'),
-      // Effort values are checked in Task 19; here only the type.
-      effort: text(40, 'Effort harus teks.', { nullable: true }),
+      model: (v) => {
+        if (!isClaudeModelId(v)) throw new Error('Model Claude tidak dikenal.');
+        return v;
+      },
+      effort: oneOf(CLAUDE_EFFORTS),
     },
     router: {
+      // The router's model list can change, so any non-empty id is kept.
       model: text(200, 'Model 9router harus 1 sampai 200 karakter.', { nullable: true }),
-      effort: text(40, 'Effort harus teks.', { nullable: true }),
+      effort: oneOf(ROUTER_EFFORTS),
     },
     maxToolRounds: intIn(1, 100, 'Putaran tool harus bilangan bulat 1 sampai 100.'),
     commandTimeoutSec: intIn(5, 600, 'Batas waktu perintah harus bilangan bulat 5 sampai 600 detik.'),

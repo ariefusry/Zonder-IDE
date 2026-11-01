@@ -118,3 +118,22 @@ test('chat channels reject unknown or malformed agent ids and bad payloads', asy
   await rejects(() => call(CHANNELS.interruptAgent, 'agent01', 'extra'), /arguments/);
   assert.equal(calls.length, 0);
 });
+
+test('setEffort validates agent id and value, and reaches the running agent', async () => {
+  const handlers = {};
+  const store = new AgentStore();
+  store.add({ id: 'agent01', name: 'Raka', kind: 'claude', status: 'idle' });
+  store.add({ id: 'rout01', name: 'Rio', kind: 'router', status: 'idle' });
+  const calls = [];
+  const agent = (id) => ({ setEffort: async (e) => calls.push([id, e]) });
+  registerIpc({ ipcMain: { handle: (ch, fn) => { handlers[ch] = fn; } }, store, getWindow: () => null, agents: new Map([['agent01', agent('agent01')], ['rout01', agent('rout01')]]) });
+  const call = (ch, ...args) => handlers[ch]({}, ...args);
+  await call(CHANNELS.setEffort, 'agent01', 'max');
+  await call(CHANNELS.setEffort, 'rout01', null);
+  assert.deepEqual(calls, [['agent01', 'max'], ['rout01', null]]);
+  await assert.rejects(async () => call(CHANNELS.setEffort, '../x', 'low'), /agentId/);
+  await assert.rejects(async () => call(CHANNELS.setEffort, 'rout01', 'max'), /Effort tidak dikenal/);
+  await assert.rejects(async () => call(CHANNELS.setEffort, 'agent01', 'ultra'), /Effort tidak dikenal/);
+  await assert.rejects(async () => call(CHANNELS.setEffort, 'agent01'), /arguments/);
+  assert.equal(calls.length, 2);
+});

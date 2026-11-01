@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('zonder', {
   sendMessage: (agentId, text) => ipcRenderer.invoke('zonder:sendMessage', agentId, text),
   interruptAgent: (agentId) => ipcRenderer.invoke('zonder:interruptAgent', agentId),
   setModel: (agentId, model) => ipcRenderer.invoke('zonder:setModel', agentId, model),
+  setEffort: (agentId, effort) => ipcRenderer.invoke('zonder:setEffort', agentId, effort),
   respondApproval: (requestId, decision) => ipcRenderer.invoke('zonder:respondApproval', requestId, decision),
   // {baseUrl, key}: the key goes in only; no method ever returns it.
   setRouterKey: (config) => ipcRenderer.invoke('zonder:setRouterKey', config),

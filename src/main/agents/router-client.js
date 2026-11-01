@@ -55,8 +55,10 @@ async function listModels({ baseUrl, key, fetch = globalThis.fetch, timeoutMs = 
 // Yields {delta} for streamed text, then {toolCalls} if the model asked for
 // tools, then {done: true}. Tool call fragments are joined by index; id and
 // name usually arrive only in the first fragment of each call.
-async function* streamChat({ baseUrl, key, model, messages, tools, signal, fetch = globalThis.fetch }) {
+async function* streamChat({ baseUrl, key, model, messages, tools, effort = null, signal, fetch = globalThis.fetch }) {
   const body = { model, messages, stream: true };
+  // Models and routers without reasoning support ignore it (settings spec §4.6).
+  if (effort) body.reasoning_effort = effort;
   if (tools?.length) body.tools = tools;
   const res = await request(fetch, join(baseUrl, 'chat/completions'), {
     method: 'POST',

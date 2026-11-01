@@ -48,6 +48,8 @@
       <textarea id="input" rows="2" placeholder="Pesan untuk agent..." aria-label="Pesan untuk agent"></textarea>
       <div class="comp-row">
         <select id="model" aria-label="Model agent"></select>
+        <select id="effort" aria-label="Effort agent"></select>
+        <span class="q" id="effortNote"></span>
         <span class="q" id="queue"></span>
         <div class="sp">
           <button type="button" class="btn" id="interrupt" hidden>Interupsi</button>
@@ -80,6 +82,14 @@
         <select id="spModel"></select>
       </label>
     </div>
+    <label class="field" id="spCustomRow" hidden>ID model Claude
+      <input id="spModelCustom" maxlength="80" autocomplete="off" spellcheck="false" placeholder="claude-sonnet-6-0">
+      <span class="hint">Diawali claude-, huruf kecil, angka, titik, atau tanda hubung.</span>
+    </label>
+    <label class="field">Effort
+      <select id="spEffort"></select>
+      <span class="hint" id="spEffortHint"></span>
+    </label>
     <div class="field">
       <span id="spWsLabel">Workspace</span>
       <div class="ws-row">
@@ -234,8 +244,32 @@
       </section>
       <section class="set-pane" id="set-agent" hidden>
         <h1>Agent</h1>
-        <p class="set-sub">Batas untuk agent 9router. Berlaku mulai giliran berikutnya, juga untuk agent yang sedang berjalan.</p>
+        <p class="set-sub">Isian awal untuk Spawn Agent, dan batas untuk agent 9router.</p>
         <form class="set-card" id="agentForm" novalidate>
+          <h2 class="set-label">Claude Code</h2>
+          <div class="field-row">
+            <label class="field">Model bawaan
+              <select id="agClaudeModel"></select>
+            </label>
+            <label class="field">Effort bawaan
+              <select id="agClaudeEffort"></select>
+            </label>
+          </div>
+          <label class="field" id="agCustomRow" hidden>ID model Claude
+            <input id="agClaudeCustom" maxlength="80" autocomplete="off" spellcheck="false" placeholder="claude-sonnet-6-0">
+          </label>
+          <h2 class="set-label">9router</h2>
+          <div class="field-row">
+            <label class="field">Model bawaan
+              <input id="agRouterModel" list="agRouterModels" maxlength="200" autocomplete="off" spellcheck="false" placeholder="Kosong: model pertama dari router">
+              <datalist id="agRouterModels"></datalist>
+            </label>
+            <label class="field">Effort bawaan
+              <select id="agRouterEffort"></select>
+            </label>
+          </div>
+          <span class="hint">Effort 9router dikirim sebagai reasoning_effort; efeknya bergantung pada model.</span>
+          <h2 class="set-label">Batas agent 9router</h2>
           <label class="field">Putaran tool per giliran
             <input id="agRounds" type="number" min="1" max="100" step="1" required>
             <span class="hint">1 sampai 100. Giliran berhenti dengan pesan error saat batas tercapai.</span>

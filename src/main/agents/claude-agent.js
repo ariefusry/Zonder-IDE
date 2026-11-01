@@ -37,7 +37,11 @@ const PERMISSION_SETTINGS = {
 
 // Aliases, not dated ids, so the list survives model releases. Also the only
 // values setModel accepts: the renderer is not trusted.
-const CLAUDE_MODELS = ['opus', 'sonnet', 'haiku'];
+// Aliases first, then current versions (settings spec §4.6); any other claude-* id is allowed too.
+const CLAUDE_MODELS = ['opus', 'sonnet', 'haiku', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-4-7', 'claude-haiku-4-5'];
+const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+const MODEL_ID = /^claude-[a-z0-9][a-z0-9.-]{1,60}(\[1m\])?$/;
+const isClaudeModelId = (s) => typeof s === 'string' && (CLAUDE_MODELS.includes(s) || MODEL_ID.test(s));
 
 // Event types kept in the agent's chat history; status, delta, queue and model are not.
 const PERSISTED = new Set(['message', 'tool_start', 'tool_end', 'error', 'exit']);
@@ -59,6 +63,7 @@ function buildArgs(record, skills = []) {
     '--settings', JSON.stringify(PERMISSION_SETTINGS),
     '--model', record.model,
   ];
+  if (record.effort) args.push('--effort', record.effort);
   if (record.persona && record.persona.trim()) args.push('--append-system-prompt', record.persona);
   const policy = record.rolePolicy;
   if (policy?.disableSkills) {
@@ -211,11 +216,27 @@ class ClaudeAgent {
   }
 
   setModel(model) {
-    if (!CLAUDE_MODELS.includes(model)) throw new Error(`Model tidak dikenal: ${model}`);
+    if (!isClaudeModelId(model)) throw new Error(`Model tidak dikenal: ${model}`);
     this.record.model = model;
     // A running session switches at its next request; a stopped one picks it up on start.
     if (this.child) this.write({ type: 'control_request', request_id: `zonder-model-${++this.interrupts}`, request: { subtype: 'set_model', model } });
     this.emitEvent({ type: 'model', model });
+  }
+
+  // Effort is a CLI flag, so it needs a restart with --resume. A busy agent keeps
+  // working; the change applies once its turn ends with no approval open (§5).
+  async setEffort(effort) {
+    if (effort !== null && !CLAUDE_EFFORTS.includes(effort)) throw new Error(`Effort tidak dikenal: ${effort}`);
+    this.record.effort = effort;
+    const busy = this.child && (this.turnActive || this.pending.size > 0);
+    this.pendingEffort = busy;
+    this.emitEvent({ type: 'effort', effort, pending: busy });
+    if (this.child && !busy) await this.restart();
+  }
+
+  async restart() {
+    await this.stop();
+    await this.start();
   }
 
   interrupt() {
@@ -303,6 +324,12 @@ class ClaudeAgent {
       this.emitQueue();
       return;
     }
+    if (this.pendingEffort) {
+      this.pendingEffort = false;
+      this.emitEvent({ type: 'effort', effort: this.record.effort, pending: false });
+      this.restart().catch((err) => this.emitEvent({ type: 'error', message: `Restart untuk effort gagal: ${err.message}` }));
+      return;
+    }
     if (this.record.status === 'done') {
       this.idleTimer = setTimeout(() => {
         this.idleTimer = null;
@@ -383,4 +410,4 @@ class ClaudeAgent {
   }
 }
 
-module.exports = { ClaudeAgent, buildArgs, resolveClaudeExe, killTree, toAction, CLAUDE_MODELS, PERMISSION_SETTINGS };
+module.exports = { ClaudeAgent, buildArgs, resolveClaudeExe, killTree, toAction, CLAUDE_MODELS, CLAUDE_EFFORTS, isClaudeModelId, PERMISSION_SETTINGS };

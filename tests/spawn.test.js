@@ -74,7 +74,7 @@ test('spawnOptions lists roles with their default prompts, Claude models, and th
   const o = await s.call(CHANNELS.spawnOptions);
   assert.deepEqual(o.roles.map((r) => r.role), Object.keys(PERSONAS));
   assert.equal(o.roles[0].prompt, PERSONAS['Senior Developer']);
-  assert.deepEqual(o.models, ['opus', 'sonnet', 'haiku']);
+  assert.deepEqual(o.models, require('../src/main/agents/claude-agent.js').CLAUDE_MODELS);
   assert.deepEqual(o.kinds, ['claude', 'router']);
 });
 
@@ -337,4 +337,24 @@ test('pickDefaultRepo on a non-repo folder throws and stores nothing', async () 
   const s = setup({ settings, pick: 'C:\proj\notrepo' });
   await assert.rejects(s.call(CHANNELS.pickDefaultRepo), /bukan root repo Git/);
   assert.equal(settings.get().workspace.defaultRepo, null);
+});
+
+test('spawn stores effort per kind; claude xhigh ok, bad effort refused; custom claude model id ok', async () => {
+  const s = setup();
+  await picked(s);
+  const rec = await s.call(CHANNELS.spawnAgent, s.cfg({ effort: 'xhigh', model: 'claude-sonnet-6-0' }));
+  assert.equal(rec.effort, 'xhigh');
+  assert.equal(rec.model, 'claude-sonnet-6-0');
+  await assert.rejects(s.call(CHANNELS.spawnAgent, s.cfg({ name: 'Dua', effort: 'ultra' })), /Effort tidak dikenal/);
+  await assert.rejects(s.call(CHANNELS.spawnAgent, s.cfg({ name: 'Tiga', model: 'claude-; rm' })), /Model tidak dikenal/);
+  const none = await s.call(CHANNELS.spawnAgent, s.cfg({ name: 'Empat' }));
+  assert.equal(none.effort, null);
+});
+
+test('spawnOptions lists claude models and both effort lists', async () => {
+  const s = setup();
+  const o = await s.call(CHANNELS.spawnOptions);
+  assert.ok(o.claudeModels.includes('claude-opus-5-5'));
+  assert.deepEqual(o.claudeEfforts, ['low', 'medium', 'high', 'xhigh', 'max']);
+  assert.deepEqual(o.routerEfforts, ['low', 'medium', 'high']);
 });

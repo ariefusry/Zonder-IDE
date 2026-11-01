@@ -94,3 +94,13 @@ test('a stored file with one bad field keeps the good fields and defaults the ba
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('agent defaults: claude model must be a claude id, efforts must be in their kind list', () => {
+  const s = createSettings();
+  assert.equal(s.update({ agent: { claude: { model: 'claude-opus-5-5', effort: 'xhigh' } } }).agent.claude.effort, 'xhigh');
+  assert.equal(s.update({ agent: { router: { model: 'daily-coding', effort: 'low' } } }).agent.router.model, 'daily-coding');
+  assert.throws(() => s.update({ agent: { claude: { model: 'gpt-5' } } }), /Model Claude/);
+  assert.throws(() => s.update({ agent: { claude: { effort: 'ultra' } } }), /Effort/);
+  assert.throws(() => s.update({ agent: { router: { effort: 'xhigh' } } }), /Effort/);
+  assert.equal(s.update({ agent: { claude: { effort: null }, router: { effort: null } } }).agent.claude.effort, null);
+});

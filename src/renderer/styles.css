@@ -116,9 +116,9 @@ pre.code { background: var(--bg); border: 1px solid var(--border); border-radius
 .composer textarea { width: 100%; background: transparent; border: 0; outline: 0; resize: none; min-height: 40px; max-height: 120px; line-height: 1.5; }
 .composer textarea::placeholder { color: var(--muted); }
 .composer textarea:disabled { cursor: default; }
-.comp-row { display: flex; align-items: center; gap: 8px; }
+.comp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .comp-row select { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; font: 11px var(--mono); max-width: 170px; }
-.comp-row .q { font-size: 11px; color: var(--muted); }
+.comp-row .q { font-size: 11px; color: var(--muted); white-space: nowrap; }
 .comp-row .sp { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 .send { width: 28px; height: 28px; border-radius: 50%; border: 0; background: var(--text); color: var(--bg); font-weight: 700; }
 .send:not(:disabled):hover { background: #fff; }

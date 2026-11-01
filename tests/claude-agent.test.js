@@ -518,7 +518,6 @@ test('setModel on a stopped agent only updates the record for the next start', (
 
 test('setModel refuses models outside the allowlist', async () => {
   const s = await started();
-  assert.deepEqual(CLAUDE_MODELS, ['opus', 'sonnet', 'haiku']);
   assert.throws(() => s.agent.setModel('gpt-5'), /model/i);
   assert.throws(() => s.agent.setModel('--dangerously-skip-permissions'), /model/i);
   assert.equal(s.record.model, 'haiku');
@@ -548,4 +547,115 @@ test('buildArgs blocks every known skill the role did not pick', () => {
   assert.ok(!buildArgs({ model: 'haiku' }, skills).includes('--disallowedTools'));
   // Every skill picked: nothing to block.
   assert.ok(!buildArgs({ model: 'haiku', rolePolicy: { skills: ['user:ui', 'kit:deck', 'user:graph'] } }, skills).includes('--disallowedTools'));
+});
+
+// --- settings plan Task 19: model versions and effort ---
+
+const { isClaudeModelId, CLAUDE_EFFORTS } = require('../src/main/agents/claude-agent.js');
+
+test('CLAUDE_MODELS lists the aliases and the current versions', () => {
+  assert.deepEqual(CLAUDE_MODELS, ['opus', 'sonnet', 'haiku', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-4-7', 'claude-haiku-4-5']);
+  assert.deepEqual(CLAUDE_EFFORTS, ['low', 'medium', 'high', 'xhigh', 'max']);
+});
+
+test('isClaudeModelId: list members and claude-* ids pass; others fail', () => {
+  for (const ok of ['sonnet', 'claude-opus-5-5', 'claude-sonnet-6-0', 'claude-opus-4-7[1m]']) assert.ok(isClaudeModelId(ok), ok);
+  for (const bad of ['gpt-5', 'claude-; rm', 'claude-', 'claude-A', '', null, 'claude-x'.padEnd(80, 'x')]) assert.ok(!isClaudeModelId(bad), String(bad));
+});
+
+test('buildArgs with effort high contains --effort high; null -> no --effort', () => {
+  const args = buildArgs({ model: 'haiku', effort: 'high' });
+  assert.equal(args[args.indexOf('--effort') + 1], 'high');
+  assert.ok(!buildArgs({ model: 'haiku', effort: null }).includes('--effort'));
+});
+
+test('setModel accepts claude-opus-5-5 and a custom claude-sonnet-6-0; rejects gpt-5 and claude-; rm', () => {
+  const s = setup();
+  s.agent.setModel('claude-opus-5-5');
+  s.agent.setModel('claude-sonnet-6-0');
+  assert.equal(s.record.model, 'claude-sonnet-6-0');
+  assert.throws(() => s.agent.setModel('gpt-5'), /Model tidak dikenal/);
+  assert.throws(() => s.agent.setModel('claude-; rm'), /Model tidak dikenal/);
+});
+
+// A fresh fake child per spawn, so a restart can be told apart from the first start.
+function restartSetup(record) {
+  const children = [];
+  const s = setup({
+    record: { sessionId: null, ...record },
+    agent: {
+      spawn: (exe, args) => {
+        const c = fakeChild(5000 + children.length);
+        c.args = args;
+        children.push(c);
+        return c;
+      },
+      kill: async (pid) => children.find((c) => c.pid === pid)?.exit(1),
+    },
+  });
+  const lineTo = async (child, text) => {
+    child.stdout.write(`${text}\n`);
+    await tick();
+  };
+  return { ...s, children, lineTo };
+}
+
+const effortEvents = (s) => s.events.filter((e) => e.type === 'effort').map(({ effort, pending }) => ({ effort, pending }));
+
+test('setEffort while idle restarts with --resume <sessionId> and --effort; event pending false', async () => {
+  const s = restartSetup();
+  await s.agent.start();
+  await s.lineTo(s.children[0], fixture('init'));
+  await wait(30);
+  assert.equal(s.record.status, 'idle');
+  const session = s.record.sessionId;
+  assert.ok(session);
+  await s.agent.setEffort('high');
+  assert.equal(s.children.length, 2);
+  const args = s.children[1].args;
+  assert.equal(args[args.indexOf('--resume') + 1], session);
+  assert.equal(args[args.indexOf('--effort') + 1], 'high');
+  assert.equal(s.record.effort, 'high');
+  assert.deepEqual(effortEvents(s), [{ effort: 'high', pending: false }]);
+});
+
+test('setEffort while thinking or in approval waits for the turn end with no approval open', async () => {
+  const s = restartSetup();
+  await s.agent.start();
+  await s.lineTo(s.children[0], fixture('init'));
+  s.agent.send('kerjakan');
+  await s.lineTo(s.children[0], fixture('control_can_use_tool'));
+  await s.agent.setEffort('max');
+  assert.equal(s.children.length, 1, 'no restart mid-turn');
+  assert.deepEqual(effortEvents(s), [{ effort: 'max', pending: true }]);
+  await s.lineTo(s.children[0], fixture('result_success'));
+  await wait(10);
+  assert.equal(s.children.length, 2, 'restarted after the turn');
+  const args = s.children[1].args;
+  assert.equal(args[args.indexOf('--effort') + 1], 'max');
+  assert.deepEqual(effortEvents(s).at(-1), { effort: 'max', pending: false });
+});
+
+test('a queued message is sent before a pending effort restarts the process', async () => {
+  const s = restartSetup();
+  await s.agent.start();
+  await s.lineTo(s.children[0], fixture('init'));
+  s.agent.send('satu');
+  s.agent.send('dua');
+  await s.agent.setEffort('low');
+  await s.lineTo(s.children[0], fixture('result_success'));
+  assert.equal(s.children.length, 1, 'the queued message runs first');
+  await s.lineTo(s.children[0], fixture('result_success'));
+  await wait(10);
+  assert.equal(s.children.length, 2);
+});
+
+test('setEffort on a stopped agent only updates the record; ultra throws', async () => {
+  const s = setup();
+  await s.agent.setEffort('medium');
+  assert.equal(s.record.effort, 'medium');
+  assert.equal(s.spawned.length, 0);
+  await s.agent.setEffort(null);
+  assert.equal(s.record.effort, null);
+  await assert.rejects(s.agent.setEffort('ultra'), /Effort tidak dikenal/);
 });

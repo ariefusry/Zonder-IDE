@@ -14,8 +14,6 @@ const STATUS = {
 };
 const BUSY = ['thinking', 'working', 'testing'];
 const ACTIVE = [...BUSY, 'approval'];
-// Mirrors CLAUDE_MODELS in claude-agent.js; main rejects anything else.
-const CLAUDE_MODELS = ['opus', 'sonnet', 'haiku'];
 // Event types main writes to history; used to drop live duplicates of history.
 const PERSISTED = ['message', 'tool_start', 'tool_end', 'error', 'exit'];
 
@@ -77,6 +75,7 @@ const handlers = {
   onApproval: answerApproval,
   onToggleTool: toggleTool,
   onModel: changeModel,
+  onEffort: changeEffort,
   onStop: openStopDialog,
   onResume: resumeAgent,
 };
@@ -182,6 +181,14 @@ function changeModel(agentId, model) {
   });
 }
 
+function changeEffort(agentId, effort) {
+  window.zonder.setEffort(agentId, effort).catch((err) => {
+    modelKey = null;
+    renderComposer(state, handlers);
+    addLocal(agentId, { type: 'error', message: `Effort gagal diganti: ${ipcMessage(err)}` });
+  });
+}
+
 async function resumeAgent(a) {
   if (state.resuming) return;
   state.resuming = a.id;
@@ -232,6 +239,10 @@ function onAgentEvent(evt) {
   if (!a) refreshAgents();
   if (evt.type === 'status' && a) a.status = evt.to;
   if (evt.type === 'model' && a) a.model = evt.model;
+  if (evt.type === 'effort' && a) {
+    a.effort = evt.effort;
+    a.effortPending = evt.pending;
+  }
   if (evt.type === 'queue') state.queue[evt.agentId] = evt.count;
   if (evt.type === 'approval_resolved') state.answering.delete(evt.requestId);
 
@@ -251,7 +262,7 @@ function onAgentEvent(evt) {
     if (shown && changed && !updateStream(state)) renderMessages(state, handlers);
     return;
   }
-  if (['status', 'model', 'queue'].includes(evt.type)) renderChrome();
+  if (['status', 'model', 'effort', 'queue'].includes(evt.type)) renderChrome();
   if (shown && (changed || evt.type === 'queue')) renderMessages(state, handlers);
 }
 
@@ -325,6 +336,11 @@ async function load() {
   if (!mock) {
     checkOrphans();
     window.zonder.listRoles().then(setRoleNames, () => {});
+    // Model and effort lists for the composer come from main, not a copy here.
+    window.zonder.spawnOptions().then((o) => {
+      state.options = o;
+      renderChrome();
+    }, () => {});
   }
 }
 

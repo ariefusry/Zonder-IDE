@@ -11,6 +11,7 @@ const { classifyShell } = require('../policy/shell.js');
 const { IllegalTransition } = require('../store.js');
 
 const MAX_TOOL_ROUNDS = 25;
+const ROUTER_EFFORTS = ['low', 'medium', 'high'];
 const DEFAULT_LIMITS = { maxToolRounds: MAX_TOOL_ROUNDS, commandTimeoutSec: COMMAND_TIMEOUT_MS / 1000 };
 const PERSISTED = new Set(['message', 'tool_start', 'tool_end', 'error', 'exit']);
 const DISPLAY_CAP = 8000;
@@ -131,6 +132,13 @@ class RouterAgent {
     this.emitEvent({ type: 'model', model });
   }
 
+  // Sent with each request, so it applies from the next one; nothing restarts.
+  setEffort(effort) {
+    if (effort !== null && !ROUTER_EFFORTS.includes(effort)) throw new Error(`Effort tidak dikenal: ${effort}`);
+    this.record.effort = effort;
+    this.emitEvent({ type: 'effort', effort, pending: false });
+  }
+
   interrupt() {
     if (!this.turnActive) return;
     this.abort?.abort();
@@ -191,7 +199,7 @@ class RouterAgent {
         let reply = '';
         let calls = null;
         for await (const part of streamChat({
-          baseUrl: this.baseUrl(), key, model: this.record.model, fetch: this.fetch, signal: ctrl.signal,
+          baseUrl: this.baseUrl(), key, model: this.record.model, effort: this.record.effort ?? null, fetch: this.fetch, signal: ctrl.signal,
           messages: [{ role: 'system', content: systemPrompt(this.record, skills) }, ...this.messages],
           tools: this.toolList,
         })) {
@@ -358,4 +366,4 @@ function displayInput(args) {
   return Object.fromEntries(Object.entries(args).map(([k, v]) => [k, typeof v === 'string' ? cap(v, INPUT_FIELD_CAP) : v]));
 }
 
-module.exports = { RouterAgent, MAX_TOOL_ROUNDS, systemPrompt, replayHistory };
+module.exports = { RouterAgent, MAX_TOOL_ROUNDS, ROUTER_EFFORTS, systemPrompt, replayHistory };

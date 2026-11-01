@@ -575,3 +575,22 @@ test('commandTimeoutSec 5 reaches the tool as timeoutMs 5000', async () => {
     s.cleanup();
   }
 });
+
+test('setEffort applies to the next request without restart; bad values throw', async () => {
+  const s = setup({ script: [{ text: 'a' }, { text: 'b' }] });
+  try {
+    await s.agent.start();
+    s.agent.send('satu');
+    await s.agent.turn;
+    s.agent.setEffort('low');
+    s.agent.send('dua');
+    await s.agent.turn;
+    assert.ok(!('reasoning_effort' in s.router.requests[0]));
+    assert.equal(s.router.requests[1].reasoning_effort, 'low');
+    assert.equal(s.router.modelCalls(), 1, 'no restart');
+    assert.deepEqual(s.of('effort').map(({ effort, pending }) => ({ effort, pending })), [{ effort: 'low', pending: false }]);
+    assert.throws(() => s.agent.setEffort('xhigh'), /Effort tidak dikenal/);
+  } finally {
+    s.cleanup();
+  }
+});

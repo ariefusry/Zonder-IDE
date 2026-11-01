@@ -138,3 +138,11 @@ test('streamChat: fetch failure throws RouterOffline; abort passes through as Ab
   const aborted = await collect(streamChat({ ...base, signal: ctrl.signal, fetch })).catch((e) => e);
   assert.equal(aborted.name, 'AbortError');
 });
+
+test('streamChat: effort medium -> reasoning_effort medium; null -> key absent', async () => {
+  const calls = [];
+  await collect(streamChat({ ...base, effort: 'medium', fetch: sseFetch(['data: [DONE]\n\n'], { calls }) }));
+  await collect(streamChat({ ...base, effort: null, fetch: sseFetch(['data: [DONE]\n\n'], { calls }) }));
+  assert.equal(calls[0].body.reasoning_effort, 'medium');
+  assert.ok(!('reasoning_effort' in calls[1].body));
+});
