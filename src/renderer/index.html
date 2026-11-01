@@ -8,6 +8,15 @@
 </head>
 <body>
 
+<header class="app-head">
+  <span class="brand">Zonder</span>
+  <div class="head-tools" role="toolbar" aria-label="Alat">
+    <button type="button" class="icon-btn" id="settingsBtn" aria-label="Settings" title="Settings">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+</header>
+
 <div class="main">
 
   <aside class="sidebar" aria-label="Agent">
@@ -16,7 +25,7 @@
     </div>
     <div class="side-label">Agent</div>
     <div class="agent-list" id="agentList" role="tablist" aria-orientation="vertical"></div>
-    <button type="button" class="router" id="routerBtn" aria-haspopup="dialog"><span class="dot" id="routerDot"></span><span id="routerText">9router: memeriksa...</span></button>
+    <button type="button" class="router" id="routerBtn"><span class="dot" id="routerDot"></span><span id="routerText">9router: memeriksa...</span></button>
   </aside>
 
   <section class="office" aria-label="Kantor">
@@ -116,25 +125,59 @@
   </form>
 </dialog>
 
-<dialog class="modal" id="keyDialog" aria-labelledby="rkTitle">
-  <form id="keyForm" novalidate>
-    <h2 id="rkTitle">9router</h2>
-    <p class="hint" id="rkState"></p>
-    <label class="field">URL endpoint
-      <input id="rkUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://router-kamu.contoh.com/v1">
-      <span class="hint">Alamat 9router milikmu sendiri, sampai /v1.</span>
-    </label>
-    <label class="field">API key
-      <input id="rkKey" type="password" autocomplete="off" spellcheck="false" maxlength="1000">
-      <span class="hint" id="rkKeyHint">Disimpan terenkripsi oleh Windows (safeStorage). Zonder tidak menampilkannya lagi.</span>
-    </label>
-    <p class="form-error" id="rkError" role="alert" hidden></p>
-    <div class="actions">
-      <button type="button" class="btn" id="rkCancel">Tutup</button>
-      <button type="submit" class="btn btn-primary" id="rkSave">Simpan dan periksa</button>
+<section class="settings" id="settings" aria-label="Settings" hidden>
+  <div class="set-top">
+    <button type="button" class="set-back" id="setBack"><span aria-hidden="true">&#8592;</span> Settings</button>
+  </div>
+  <div class="set-body">
+    <nav class="set-nav" id="setNav" aria-label="Bagian Settings">
+      <div class="set-group">Agent</div>
+      <button type="button" data-section="providers">Providers</button>
+      <button type="button" data-section="roles">Roles</button>
+      <button type="button" data-section="skills">Skills</button>
+      <button type="button" data-section="agent">Agent</button>
+      <div class="set-group">Aplikasi</div>
+      <button type="button" data-section="workspace">Workspace</button>
+      <button type="button" data-section="notify">Notifikasi</button>
+    </nav>
+    <div class="set-main">
+      <section class="set-pane" id="set-providers" hidden>
+        <h1>Providers</h1>
+        <p class="set-sub">Koneksi ke penyedia agent. Kunci API disimpan terenkripsi oleh Windows dan tidak pernah ditampilkan lagi.</p>
+        <h2 class="set-label">9router</h2>
+        <form class="set-card" id="keyForm" novalidate>
+          <div class="set-status"><span class="dot" id="rkDot"></span><span id="rkState"></span></div>
+          <label class="field">URL endpoint
+            <input id="rkUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://router-kamu.contoh.com/v1">
+            <span class="hint">Alamat 9router milikmu sendiri, sampai /v1.</span>
+          </label>
+          <label class="field">API key
+            <input id="rkKey" type="password" autocomplete="off" spellcheck="false" maxlength="1000">
+            <span class="hint" id="rkKeyHint">Disimpan terenkripsi oleh Windows (safeStorage). Zonder tidak menampilkannya lagi.</span>
+          </label>
+          <p class="form-error" id="rkError" role="alert" hidden></p>
+          <div class="actions">
+            <button type="submit" class="btn btn-primary" id="rkSave">Simpan dan periksa</button>
+          </div>
+        </form>
+        <h2 class="set-label">Claude Code CLI</h2>
+        <div class="set-card set-row">
+          <div class="set-row-main">
+            <div><b>Claude Code CLI</b> <span class="mono muted" id="ccVersion"></span></div>
+            <div class="set-status"><span class="dot" id="ccDot"></span><span id="ccState">Memeriksa...</span></div>
+            <div class="hint" id="ccLogin"></div>
+          </div>
+          <button type="button" class="btn" id="ccCheck">Periksa ulang</button>
+        </div>
+      </section>
+      <section class="set-pane" id="set-roles" hidden><h1>Roles</h1><p class="set-sub">Diisi di tugas berikutnya.</p></section>
+      <section class="set-pane" id="set-skills" hidden><h1>Skills</h1><p class="set-sub">Diisi di tugas berikutnya.</p></section>
+      <section class="set-pane" id="set-agent" hidden><h1>Agent</h1><p class="set-sub">Diisi di tugas berikutnya.</p></section>
+      <section class="set-pane" id="set-workspace" hidden><h1>Workspace</h1><p class="set-sub">Diisi di tugas berikutnya.</p></section>
+      <section class="set-pane" id="set-notify" hidden><h1>Notifikasi</h1><p class="set-sub">Diisi di tugas berikutnya.</p></section>
     </div>
-  </form>
-</dialog>
+  </div>
+</section>
 
 <footer class="statusbar">
   <span>9router <b id="routerState">&#8212;</b></span>
@@ -147,6 +190,7 @@
 <script src="chat.js"></script>
 <script src="spawn-modal.js"></script>
 <script src="stop-dialog.js"></script>
+<script src="settings.js"></script>
 <script src="office/iso.js"></script>
 <script src="office/map.js"></script>
 <script src="office/pathfinder.js"></script>

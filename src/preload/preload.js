@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('zonder', {
   listModels: () => ipcRenderer.invoke('zonder:listModels'),
   resumeAgent: (agentId) => ipcRenderer.invoke('zonder:resumeAgent', agentId),
   findOrphans: () => ipcRenderer.invoke('zonder:findOrphans'),
+  claudeStatus: () => ipcRenderer.invoke('zonder:claudeStatus'),
   listRoles: () => ipcRenderer.invoke('zonder:listRoles'),
   saveRole: (role) => ipcRenderer.invoke('zonder:saveRole', role),
   deleteRole: (name) => ipcRenderer.invoke('zonder:deleteRole', name),

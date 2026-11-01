@@ -30,6 +30,7 @@ const CHANNELS = {
   saveRole: 'zonder:saveRole',
   deleteRole: 'zonder:deleteRole',
   resetRole: 'zonder:resetRole',
+  claudeStatus: 'zonder:claudeStatus',
 };
 
 const AGENT_ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -84,6 +85,7 @@ function registerIpc({
   retryDelayMs = 500,
   // Built-ins only, in memory, when main.js does not pass the roles.json store.
   roles = createRoles(),
+  checkClaude = require('./claude-status.js').checkClaude,
 }) {
   // Only folders the owner picked in the native dialog may become a workspace:
   // the path is the policy's "main checkout", so the renderer cannot supply it.
@@ -207,6 +209,11 @@ function registerIpc({
   ipcMain.handle(CHANNELS.spawnOptions, (_e, ...args) => {
     expectArgs(args, 0);
     return { roles: roles.list().map((r) => ({ role: r.name, prompt: r.persona })), models: CLAUDE_MODELS, kinds: KINDS };
+  });
+
+  ipcMain.handle(CHANNELS.claudeStatus, (_e, ...args) => {
+    expectArgs(args, 0);
+    return checkClaude();
   });
 
   ipcMain.handle(CHANNELS.listRoles, (_e, ...args) => {
