@@ -40,8 +40,15 @@ async function openStopDialog(agent) {
   stopField('stKeepRow').hidden = !running;
   stopField('stopForm').reset();
   stopField(running ? 'stKeep' : 'stWorktree').checked = true;
-  stopField('stInfo').textContent = 'Memeriksa worktree...';
   stopField('stopDialog').showModal();
+  // The stored choice preselects; keep is only offered while the agent runs.
+  try {
+    const pref = (await window.zonder.getSettings()).workspace.stopCleanup;
+    if (pref && (pref !== 'keep' || running)) stopField('stopForm').elements.cleanup.value = pref;
+  } catch {
+    // Settings unreadable: today's default stays.
+  }
+  stopField('stInfo').textContent = 'Memeriksa worktree...';
   syncStopForm();
   try {
     const st = await window.zonder.worktreeStatus(agent.id);

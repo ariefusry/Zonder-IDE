@@ -8,7 +8,7 @@ const { PERSONAS } = require('../src/main/personas.js');
 
 const REPO = 'C:\\proj\\repo';
 
-function setup({ startStatus = 'idle', createFails = false, removeFailures = 0, dirty = false, pick = REPO, roles } = {}) {
+function setup({ startStatus = 'idle', createFails = false, removeFailures = 0, dirty = false, pick = REPO, roles, settings } = {}) {
   const handlers = {};
   const store = new AgentStore();
   store.add({ id: 'a1', name: 'Contoh', sample: true, status: 'idle', workspace: '(contoh)', worktreePath: '(contoh)' });
@@ -60,6 +60,7 @@ function setup({ startStatus = 'idle', createFails = false, removeFailures = 0, 
     newId: () => `id${String(++ids).padStart(6, '0')}`,
     retryDelayMs: 0,
     roles,
+    settings,
   });
   const call = (ch, ...args) => handlers[ch]({}, ...args);
   const cfg = (extra) => ({ name: 'Raka', role: 'Junior Developer', systemPrompt: 'Persona X', kind: 'claude', model: 'haiku', workspace: REPO, baseBranch: 'main', ...extra });
@@ -297,4 +298,43 @@ test('role channels: list, save, reset, delete', async () => {
   await s.call(CHANNELS.deleteRole, 'Designer');
   assert.equal((await s.call(CHANNELS.listRoles)).length, 6);
   await assert.rejects(async () => s.call(CHANNELS.deleteRole, 5), /invalid role name/);
+});
+
+test('the stored defaultRepo is accepted by spawn after restart without a new pick', async () => {
+  const { createSettings } = require('../src/main/settings.js');
+  const settings = createSettings();
+  settings.update({ workspace: { defaultRepo: REPO } });
+  // A fresh registerIpc is a restart: pickedRepos starts empty and pickFolder is never called.
+  const s = setup({ settings, pick: null });
+  await s.call(CHANNELS.getSettings);
+  const rec = await s.call(CHANNELS.spawnAgent, s.cfg());
+  assert.equal(rec.workspace, REPO);
+});
+
+test('a stored defaultRepo that is no longer a repo is not allowed', async () => {
+  const { createSettings } = require('../src/main/settings.js');
+  const settings = createSettings();
+  settings.update({ workspace: { defaultRepo: 'C:\proj\gone' } });
+  const s = setup({ settings, pick: null });
+  await s.call(CHANNELS.getSettings);
+  await assert.rejects(s.call(CHANNELS.spawnAgent, s.cfg({ workspace: 'C:\proj\gone' })), /Pilih workspace/);
+});
+
+test('updateSettings cannot set defaultRepo; pickDefaultRepo stores a picked repo', async () => {
+  const { createSettings } = require('../src/main/settings.js');
+  const settings = createSettings();
+  const s = setup({ settings });
+  await assert.rejects(s.call(CHANNELS.updateSettings, { workspace: { defaultRepo: 'C:\elsewhere' } }), /Pilih folder/);
+  assert.equal((await s.call(CHANNELS.updateSettings, { workspace: { defaultRepo: null, baseBranch: 'dev' } })).workspace.baseBranch, 'dev');
+  assert.equal(await s.call(CHANNELS.pickDefaultRepo), REPO);
+  assert.equal(settings.get().workspace.defaultRepo, REPO);
+  assert.equal((await s.call(CHANNELS.spawnAgent, s.cfg())).workspace, REPO);
+});
+
+test('pickDefaultRepo on a non-repo folder throws and stores nothing', async () => {
+  const { createSettings } = require('../src/main/settings.js');
+  const settings = createSettings();
+  const s = setup({ settings, pick: 'C:\proj\notrepo' });
+  await assert.rejects(s.call(CHANNELS.pickDefaultRepo), /bukan root repo Git/);
+  assert.equal(settings.get().workspace.defaultRepo, null);
 });

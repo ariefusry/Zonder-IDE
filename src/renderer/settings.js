@@ -90,6 +90,10 @@ function showSettingsSection(section) {
     loadSkills();
   }
   if (section === 'skills') loadSkills();
+  if (['workspace', 'agent', 'notify'].includes(section)) {
+    for (const id of ['wsSaved', 'agSaved', 'ntSaved']) setField(id).textContent = '';
+    loadPrefs();
+  }
   if (section === 'providers') {
     showRouterError('');
     setField('rkUrl').value = '';
@@ -134,6 +138,7 @@ function initSettings() {
   });
   setField('ccCheck').addEventListener('click', checkClaudeStatus);
   initRolesPane();
+  initPrefsPanes();
   setField('roleSkillFilter').addEventListener('input', renderRoleSkills);
   setField('roleSkillChecks').addEventListener('change', (e) => {
     const box = e.target.closest('input[type=checkbox]');
@@ -454,4 +459,106 @@ function renderRoleSkills() {
         el('span', {}, el('b', {}, s.name), el('small', {}, s.description || 'Tanpa deskripsi.'))));
     }
   }
+}
+
+// Workspace, Agent and Notifikasi (settings spec §4.5–§4.7). Main validates
+// every value again; the forms only show its message.
+const prefsUi = { settings: null, busy: false };
+
+async function loadPrefs() {
+  try {
+    prefsUi.settings = await window.zonder.getSettings();
+  } catch (err) {
+    for (const id of ['wsError', 'agError', 'ntError2']) showPrefsMessage(id, `Pengaturan gagal dibaca: ${ipcMessage(err)}`);
+    return;
+  }
+  fillPrefs();
+}
+
+function showPrefsMessage(id, text) {
+  setField(id).textContent = text || '';
+  setField(id).hidden = !text;
+}
+
+async function fillBranches(repo) {
+  const list = setField('wsBranches');
+  list.replaceChildren();
+  if (!repo) return;
+  try {
+    for (const b of await window.zonder.listBranches(repo)) list.append(el('option', { value: b }));
+  } catch {
+    // The repo may be gone; the field still takes a typed name.
+  }
+}
+
+function fillPrefs() {
+  const { workspace, agent, notify } = prefsUi.settings;
+  const repo = setField('wsRepo');
+  repo.textContent = workspace.defaultRepo ?? 'Belum dipilih';
+  repo.classList.toggle('muted', !workspace.defaultRepo);
+  setField('wsClear').disabled = !workspace.defaultRepo;
+  setField('wsBranch').value = workspace.baseBranch;
+  const stop = setField('wsForm').elements.wsStop;
+  stop.value = workspace.stopCleanup ?? '';
+  fillBranches(workspace.defaultRepo);
+  setField('agRounds').value = agent.maxToolRounds;
+  setField('agTimeout').value = agent.commandTimeoutSec;
+  setField('ntApproval').checked = notify.approval;
+  setField('ntDone').checked = notify.done;
+  setField('ntError').checked = notify.error;
+}
+
+// Saves one pane's patch; the status line says what happened.
+async function savePrefs(patch, { error, saved, button }) {
+  if (prefsUi.busy) return;
+  prefsUi.busy = true;
+  setField(button).disabled = true;
+  showPrefsMessage(error, '');
+  setField(saved).textContent = '';
+  try {
+    prefsUi.settings = await window.zonder.updateSettings(patch);
+    fillPrefs();
+    setField(saved).textContent = 'Tersimpan.';
+  } catch (err) {
+    showPrefsMessage(error, ipcMessage(err));
+  }
+  prefsUi.busy = false;
+  setField(button).disabled = false;
+}
+
+// A number field read as an integer; anything else goes to main as-is and is refused there.
+const intField = (id) => {
+  const v = setField(id).value.trim();
+  return /^\d+$/.test(v) ? Number(v) : v;
+};
+
+function initPrefsPanes() {
+  setField('wsForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const stop = setField('wsForm').elements.wsStop.value;
+    savePrefs({ workspace: { baseBranch: setField('wsBranch').value, stopCleanup: stop || null } }, { error: 'wsError', saved: 'wsSaved', button: 'wsSave' });
+  });
+  setField('wsPick').addEventListener('click', async () => {
+    showPrefsMessage('wsError', '');
+    try {
+      if (!(await window.zonder.pickDefaultRepo())) return;
+      prefsUi.settings = await window.zonder.getSettings();
+      fillPrefs();
+      setField('wsSaved').textContent = 'Repo bawaan tersimpan.';
+    } catch (err) {
+      showPrefsMessage('wsError', ipcMessage(err));
+    }
+  });
+  setField('wsClear').addEventListener('click', () => {
+    savePrefs({ workspace: { defaultRepo: null } }, { error: 'wsError', saved: 'wsSaved', button: 'wsClear' });
+  });
+  setField('agentForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    savePrefs({ agent: { maxToolRounds: intField('agRounds'), commandTimeoutSec: intField('agTimeout') } }, { error: 'agError', saved: 'agSaved', button: 'agSave' });
+  });
+  setField('ntForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const notify = { approval: setField('ntApproval').checked, done: setField('ntDone').checked, error: setField('ntError').checked };
+    savePrefs({ notify }, { error: 'ntError2', saved: 'ntSaved', button: 'ntSave' });
+  });
 }

@@ -50,7 +50,7 @@ function seedMock(store) {
 
 // Under plain node (tests) require('electron') is only the binary path.
 if (process.versions.electron) {
-  const { app, BrowserWindow, ipcMain, dialog, safeStorage } = require('electron');
+  const { app, BrowserWindow, ipcMain, dialog, safeStorage, Notification } = require('electron');
   const { AgentStore } = require('./store.js');
   const { registerIpc, shutdown, restoreAgents } = require('./ipc.js');
   const { Approvals } = require('./approvals.js');
@@ -60,6 +60,8 @@ if (process.versions.electron) {
   const { listModels } = require('./agents/router-client.js');
   const { createSecrets } = require('./secrets.js');
   const { createRoles } = require('./roles.js');
+  const { createSettings } = require('./settings.js');
+  const { startNotifier } = require('./notify.js');
   const store = new AgentStore();
   const approvals = new Approvals({ store });
   // Running agent processes by id; records without one (samples) cannot chat.
@@ -75,11 +77,16 @@ if (process.versions.electron) {
     return res.canceled ? null : res.filePaths[0];
   };
   if (MOCK) seedMock(store);
+  // Windows shows toasts only for an app with an AppUserModelID; without an
+  // installer (out of scope) the Electron binary path is the one that works.
+  if (process.platform === 'win32') app.setAppUserModelId(process.execPath);
   app.whenReady().then(() => {
     const dataDir = process.env.ZONDER_DATA_DIR || app.getPath('userData');
     persistence = new Persistence(dataDir);
     const secrets = createSecrets({ dir: dataDir, safeStorage });
     const roles = createRoles({ dir: dataDir });
+    const settings = createSettings({ dir: dataDir });
+    startNotifier({ store, getWindow: () => win, settings, Notification });
     // Saved agents come back stopped; the owner resumes each one from its chat.
     if (!MOCK) restoreAgents({ store, persistence });
     registerIpc({
@@ -90,11 +97,12 @@ if (process.versions.electron) {
       persistence,
       agents,
       createAgent: (record) => (record.kind === 'router'
-        ? new RouterAgent({ record, store, persistence, approvals, getKey: secrets.getRouterKey, baseUrl: () => secrets.getRouterUrl() || ROUTER_URL })
+        ? new RouterAgent({ record, store, persistence, approvals, getKey: secrets.getRouterKey, baseUrl: () => secrets.getRouterUrl() || ROUTER_URL, limits: () => settings.get().agent })
         : new ClaudeAgent({ record, store, persistence, approvals })),
       pickFolder,
       router: { defaultUrl: ROUTER_URL, secrets, listModels },
       roles,
+      settings,
     });
     win = createWindow(BrowserWindow);
     app.on('activate', () => {

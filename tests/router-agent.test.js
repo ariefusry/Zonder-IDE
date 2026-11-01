@@ -547,3 +547,31 @@ test('a load_skill call runs without an approval card and returns the skill text
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('maxToolRounds from settings (3) caps the turn at 3 rounds', async () => {
+  const s = setup({ script: (n) => (n < 10 ? { calls: [{ id: `c${n}`, name: 'list_dir', args: '{}' }] } : { text: 'ok' }), agent: { limits: () => ({ maxToolRounds: 3, commandTimeoutSec: 60 }) } });
+  try {
+    await s.agent.start();
+    s.agent.send('loop');
+    await s.agent.turn;
+    assert.equal(s.of('tool_end').length, 3);
+    assert.match(s.of('error').at(-1).message, /Batas 3 putaran/);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('commandTimeoutSec 5 reaches the tool as timeoutMs 5000', async () => {
+  const seen = [];
+  const routerTools = require('../src/main/agents/router-tools.js');
+  const tools = { ...routerTools, execTool: async (name, args, ctx) => { seen.push(ctx.timeoutMs); return 'ok'; } };
+  const s = setup({ role: 'Senior Developer', script: [{ calls: [{ id: 'c1', name: 'run_command', args: '{"command":"npm test"}' }] }, { text: 'ok' }], agent: { tools, limits: () => ({ maxToolRounds: 25, commandTimeoutSec: 5 }) } });
+  try {
+    await s.agent.start();
+    s.agent.send('tes');
+    await s.agent.turn;
+    assert.deepEqual(seen, [5000]);
+  } finally {
+    s.cleanup();
+  }
+});

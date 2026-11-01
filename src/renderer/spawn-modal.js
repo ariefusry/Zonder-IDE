@@ -67,9 +67,24 @@ async function openSpawnModal() {
     applyKind();
     applyRolePrompt();
   }
+  if (!spawnUi.workspace) await prefillWorkspace();
   renderWorkspace();
   dialog.showModal();
   spawnField('spName').focus();
+}
+
+// The default repo and base branch from Settings (§4.5). A repo that is gone
+// or unreadable leaves the field empty, as before Settings existed.
+async function prefillWorkspace() {
+  try {
+    const { workspace } = await window.zonder.getSettings();
+    if (!workspace.defaultRepo) return;
+    const branches = await window.zonder.listBranches(workspace.defaultRepo);
+    if (!branches.length) return;
+    spawnUi.workspace = { path: workspace.defaultRepo, isRepo: true, branches, current: workspace.baseBranch };
+  } catch {
+    spawnUi.workspace = null;
+  }
 }
 
 // A role change replaces the prompt only while the owner has not edited it.

@@ -32,6 +32,9 @@ const CHANNELS = {
   resetRole: 'zonder:resetRole',
   claudeStatus: 'zonder:claudeStatus',
   listSkills: 'zonder:listSkills',
+  getSettings: 'zonder:getSettings',
+  updateSettings: 'zonder:updateSettings',
+  pickDefaultRepo: 'zonder:pickDefaultRepo',
 };
 
 const AGENT_ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -88,10 +91,18 @@ function registerIpc({
   roles = createRoles(),
   checkClaude = require('./claude-status.js').checkClaude,
   listSkills = require('./skills.js').listSkills,
+  // Defaults in memory when main.js does not pass the settings.json store.
+  settings = require('./settings.js').createSettings(),
 }) {
   // Only folders the owner picked in the native dialog may become a workspace:
   // the path is the policy's "main checkout", so the renderer cannot supply it.
   const pickedRepos = new Set();
+  // The stored default repo was picked in an earlier session; it is trusted
+  // again only while it is still the top of a Git repo.
+  const seeded = (async () => {
+    const repo = settings.get().workspace.defaultRepo;
+    if (repo && (await worktree.isGitRepo(repo).catch(() => false))) pickedRepos.add(repo);
+  })();
   let spawnChain = Promise.resolve();
   // Model ids from the last successful /models call; spawn and setModel check against it.
   let routerModels = [];
@@ -164,6 +175,7 @@ function registerIpc({
     }
     if (!modelsFor(cfg.kind).includes(cfg.model)) throw new Error('Model tidak dikenal.');
     if (typeof cfg.systemPrompt !== 'string' || cfg.systemPrompt.length > MAX_PROMPT) throw new Error(`Prompt harus teks, paling banyak ${MAX_PROMPT} karakter.`);
+    await seeded;
     const repo = cfg.workspace;
     if (!pickedRepos.has(repo) || !(await worktree.isGitRepo(repo))) throw new Error('Pilih workspace lewat tombol Pilih folder.');
     if (!(await worktree.listBranches(repo)).includes(cfg.baseBranch)) throw new Error(`Branch dasar tidak ditemukan: ${cfg.baseBranch}`);
@@ -276,6 +288,31 @@ function registerIpc({
     if (!(await worktree.isGitRepo(picked))) return { path: picked, isRepo: false };
     pickedRepos.add(picked);
     return { path: picked, isRepo: true, branches: await worktree.listBranches(picked), current: await worktree.currentBranch(picked) };
+  });
+
+  ipcMain.handle(CHANNELS.getSettings, async (_e, ...args) => {
+    expectArgs(args, 0);
+    await seeded;
+    return settings.get();
+  });
+
+  // The default repo only comes from the native dialog (pickDefaultRepo), like any workspace.
+  ipcMain.handle(CHANNELS.updateSettings, async (_e, ...args) => {
+    expectArgs(args, 1);
+    const [patch] = args;
+    const repo = patch?.workspace?.defaultRepo;
+    if (repo !== undefined && repo !== null) throw new Error('Pilih folder repo lewat tombol Pilih folder.');
+    return settings.update(patch);
+  });
+
+  ipcMain.handle(CHANNELS.pickDefaultRepo, async (_e, ...args) => {
+    expectArgs(args, 0);
+    const picked = await pickFolder();
+    if (!picked) return null;
+    if (!(await worktree.isGitRepo(picked))) throw new Error(`${picked} bukan root repo Git. Pilih folder teratas repo (yang berisi folder .git).`);
+    pickedRepos.add(picked);
+    settings.update({ workspace: { defaultRepo: picked } });
+    return picked;
   });
 
   ipcMain.handle(CHANNELS.listBranches, (_e, ...args) => {

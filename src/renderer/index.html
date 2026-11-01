@@ -232,9 +232,62 @@
         <p class="set-sub">Skill Claude Code milikmu dari <span class="mono">~/.claude/skills</span> dan plugin yang terpasang. Pilih skill untuk tiap peran di Roles.</p>
         <div class="skill-list" id="skillList"></div>
       </section>
-      <section class="set-pane" id="set-agent" hidden><h1>Agent</h1><p class="set-sub">Diisi di tugas berikutnya.</p></section>
-      <section class="set-pane" id="set-workspace" hidden><h1>Workspace</h1><p class="set-sub">Diisi di tugas berikutnya.</p></section>
-      <section class="set-pane" id="set-notify" hidden><h1>Notifikasi</h1><p class="set-sub">Diisi di tugas berikutnya.</p></section>
+      <section class="set-pane" id="set-agent" hidden>
+        <h1>Agent</h1>
+        <p class="set-sub">Batas untuk agent 9router. Berlaku mulai giliran berikutnya, juga untuk agent yang sedang berjalan.</p>
+        <form class="set-card" id="agentForm" novalidate>
+          <label class="field">Putaran tool per giliran
+            <input id="agRounds" type="number" min="1" max="100" step="1" required>
+            <span class="hint">1 sampai 100. Giliran berhenti dengan pesan error saat batas tercapai.</span>
+          </label>
+          <label class="field">Batas waktu perintah (detik)
+            <input id="agTimeout" type="number" min="5" max="600" step="1" required>
+            <span class="hint">5 sampai 600. Perintah shell yang lebih lama dihentikan.</span>
+          </label>
+          <p class="form-error" id="agError" role="alert" hidden></p>
+          <div class="actions"><span class="hint" id="agSaved" role="status"></span><button type="submit" class="btn btn-primary" id="agSave">Simpan</button></div>
+        </form>
+      </section>
+      <section class="set-pane" id="set-workspace" hidden>
+        <h1>Workspace</h1>
+        <p class="set-sub">Isian awal untuk Spawn Agent dan pilihan awal saat menghentikan agent.</p>
+        <form class="set-card" id="wsForm" novalidate>
+          <div class="field">
+            <span id="wsRepoLabel">Repo bawaan</span>
+            <div class="ws-row">
+              <span class="ws-path muted" id="wsRepo" aria-labelledby="wsRepoLabel">Belum dipilih</span>
+              <button type="button" class="btn" id="wsPick">Pilih folder...</button>
+              <button type="button" class="btn" id="wsClear">Kosongkan</button>
+            </div>
+          </div>
+          <label class="field">Branch dasar
+            <input id="wsBranch" list="wsBranches" maxlength="200" autocomplete="off" spellcheck="false" required>
+            <datalist id="wsBranches"></datalist>
+            <span class="hint">Dipakai kalau ada di repo yang dipilih saat spawn.</span>
+          </label>
+          <fieldset class="field">
+            <legend>Saat menghentikan agent</legend>
+            <label class="choice"><input type="radio" name="wsStop" value=""><span><b>Tanya seperti biasa</b><small>Pertahankan worktree kalau agent masih berjalan, hapus worktree kalau sudah berhenti.</small></span></label>
+            <label class="choice"><input type="radio" name="wsStop" value="keep"><span><b>Pertahankan worktree</b></span></label>
+            <label class="choice"><input type="radio" name="wsStop" value="worktree"><span><b>Hapus worktree</b></span></label>
+            <label class="choice"><input type="radio" name="wsStop" value="worktree+branch"><span><b>Hapus worktree dan branch</b></span></label>
+            <span class="hint">Ini hanya pilihan awal di dialog; kamu tetap mengonfirmasi setiap kali.</span>
+          </fieldset>
+          <p class="form-error" id="wsError" role="alert" hidden></p>
+          <div class="actions"><span class="hint" id="wsSaved" role="status"></span><button type="submit" class="btn btn-primary" id="wsSave">Simpan</button></div>
+        </form>
+      </section>
+      <section class="set-pane" id="set-notify" hidden>
+        <h1>Notifikasi</h1>
+        <p class="set-sub">Notifikasi Windows saat jendela Zonder tidak aktif. Isinya hanya nama dan jenis agent, tanpa isi chat.</p>
+        <form class="set-card" id="ntForm" novalidate>
+          <label class="choice"><input type="checkbox" id="ntApproval"><span><b>Agent butuh izin</b></span></label>
+          <label class="choice"><input type="checkbox" id="ntDone"><span><b>Agent selesai</b></span></label>
+          <label class="choice"><input type="checkbox" id="ntError"><span><b>Agent mengalami error</b></span></label>
+          <p class="form-error" id="ntError2" role="alert" hidden></p>
+          <div class="actions"><span class="hint" id="ntSaved" role="status"></span><button type="submit" class="btn btn-primary" id="ntSave">Simpan</button></div>
+        </form>
+      </section>
     </div>
   </div>
 </section>

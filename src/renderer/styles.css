@@ -231,3 +231,7 @@ button.role-item:hover { background: var(--surface-2); color: var(--text); }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+fieldset.field { border: 0; padding: 0; margin: 0; min-width: 0; gap: 6px; }
+fieldset.field legend { padding: 0; margin-bottom: 4px; }
+.field .choice input { padding: 0; border: 0; background: none; }
+.actions .hint { margin-right: auto; align-self: center; }

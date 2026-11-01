@@ -5,11 +5,13 @@
 
 const { listModels, streamChat, RouterOffline } = require('./router-client.js');
 const routerTools = require('./router-tools.js');
+const { COMMAND_TIMEOUT_MS } = routerTools;
 const skillsModule = require('../skills.js');
 const { classifyShell } = require('../policy/shell.js');
 const { IllegalTransition } = require('../store.js');
 
 const MAX_TOOL_ROUNDS = 25;
+const DEFAULT_LIMITS = { maxToolRounds: MAX_TOOL_ROUNDS, commandTimeoutSec: COMMAND_TIMEOUT_MS / 1000 };
 const PERSISTED = new Set(['message', 'tool_start', 'tool_end', 'error', 'exit']);
 const DISPLAY_CAP = 8000;
 const INPUT_FIELD_CAP = 2000;
@@ -49,7 +51,7 @@ function replayHistory(events) {
 }
 
 class RouterAgent {
-  constructor({ record, store, persistence, approvals, getKey, baseUrl, fetch = globalThis.fetch, tools = routerTools, toolCtx = {}, doneIdleMs = 30000, listSkills = skillsModule.listSkills }) {
+  constructor({ record, store, persistence, approvals, getKey, baseUrl, fetch = globalThis.fetch, tools = routerTools, toolCtx = {}, doneIdleMs = 30000, listSkills = skillsModule.listSkills, limits = () => DEFAULT_LIMITS }) {
     this.record = record;
     this.store = store;
     this.persistence = persistence;
@@ -60,6 +62,8 @@ class RouterAgent {
     this.fetch = fetch;
     this.tools = tools;
     this.toolCtx = toolCtx;
+    // Read at the start of each turn, so a change in Settings applies to the next one.
+    this.limits = limits;
     this.doneIdleMs = doneIdleMs;
     this.listSkills = listSkills;
     // The tool list of the current round (load_skill only for roles with skills).
@@ -176,6 +180,8 @@ class RouterAgent {
     this.abort = ctrl;
 
     try {
+      const { maxToolRounds: maxRounds, commandTimeoutSec } = this.limits();
+      this.commandTimeoutMs = commandTimeoutSec * 1000;
       for (let rounds = 0; ; rounds++) {
         const key = await this.getKey();
         if (!key) throw new Error('Kunci 9router belum diisi. Isi lewat tombol 9router di sidebar.');
@@ -202,10 +208,10 @@ class RouterAgent {
           this.setStatus('done');
           break;
         }
-        if (rounds >= MAX_TOOL_ROUNDS) {
+        if (rounds >= maxRounds) {
           // The unanswered tool calls are dropped, so the next turn's history stays valid.
           if (reply) this.messages.push({ role: 'assistant', content: reply });
-          this.emitEvent({ type: 'error', message: `Batas ${MAX_TOOL_ROUNDS} putaran tool per giliran tercapai. Giliran dihentikan.` });
+          this.emitEvent({ type: 'error', message: `Batas ${maxRounds} putaran tool per giliran tercapai. Giliran dihentikan.` });
           this.setStatus('idle');
           break;
         }
@@ -278,7 +284,7 @@ class RouterAgent {
         if (action.kind === 'shell' && classifyShell(action.command).isTest) this.setStatus('testing');
         else this.setStatus('working');
         try {
-          content = await this.tools.execTool(call.name, args, { worktree: this.record.worktreePath, ...this.toolCtx, signal });
+          content = await this.tools.execTool(call.name, args, { worktree: this.record.worktreePath, timeoutMs: this.commandTimeoutMs, ...this.toolCtx, signal });
           isError = false;
         } catch (err) {
           content = `Gagal: ${err.message}`;
