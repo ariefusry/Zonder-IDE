@@ -245,3 +245,12 @@ test('fileDiff of an untracked file shows every line with +; of a binary -> bina
   assert.ok(Buffer.byteLength(big.text) > 100 * 1024, 'keeps most of it');
   assert.equal(wt.MAX_DIFF, 200 * 1024);
 });
+
+test('removeWorktree on a folder deleted from outside prunes the worktree and deletes the branch', async (t) => {
+  const { repo } = makeRepo(t);
+  const res = await wt.createWorktree({ repo, baseBranch: 'main', name: 'Hilang', agentId: 'lost01', taken: new Set() });
+  fs.rmSync(res.path, { recursive: true, force: true });
+  await wt.removeWorktree({ repo, path: res.path, branch: res.branch, deleteBranch: true });
+  assert.ok(!(await wt.listBranches(repo)).includes(res.branch));
+  assert.equal((await wt.listAgentWorktrees(repo)).length, 0);
+});

@@ -8,7 +8,7 @@ const { PERSONAS } = require('../src/main/personas.js');
 
 const REPO = 'C:\\proj\\repo';
 
-function setup({ startStatus = 'idle', createFails = false, removeFailures = 0, dirty = false, pick = REPO, roles, settings } = {}) {
+function setup({ startStatus = 'idle', createFails = false, removeFailures = 0, dirty = false, missing = false, pick = REPO, roles, settings } = {}) {
   const handlers = {};
   const store = new AgentStore();
   store.add({ id: 'a1', name: 'Contoh', sample: true, status: 'idle', workspace: '(contoh)', worktreePath: '(contoh)' });
@@ -32,7 +32,12 @@ function setup({ startStatus = 'idle', createFails = false, removeFailures = 0, 
       log.push(['remove', opts]);
       if (removeLeft-- > 0) throw new Error('git worktree remove failed: Permission denied');
     },
-    isDirty: async () => dirty,
+    // git cannot run in a folder that is gone (spawn git ENOENT).
+    isDirty: async () => {
+      if (missing) throw new Error('git status failed: spawn git ENOENT');
+      return dirty;
+    },
+    exists: () => !missing,
   };
   const createAgent = (record) => ({
     record,
@@ -357,4 +362,15 @@ test('spawnOptions lists claude models and both effort lists', async () => {
   assert.ok(o.claudeModels.includes('claude-opus-5-5'));
   assert.deepEqual(o.claudeEfforts, ['low', 'medium', 'high', 'xhigh', 'max']);
   assert.deepEqual(o.routerEfforts, ['low', 'medium', 'high']);
+});
+
+test('worktree folder deleted from outside: worktreeStatus says so, stop with cleanup still removes the record', async () => {
+  const s = setup({ missing: true });
+  await picked(s);
+  const rec = await s.call(CHANNELS.spawnAgent, s.cfg());
+  assert.deepEqual(await s.call(CHANNELS.worktreeStatus, rec.id), { dirty: false, missing: true, branch: rec.branch, path: rec.worktreePath });
+  await s.call(CHANNELS.stopAgent, rec.id, 'worktree+branch', false);
+  const opts = s.log.at(-1)[1];
+  assert.deepEqual([s.log.at(-1)[0], opts.deleteBranch, opts.force], ['remove', true, false]);
+  assert.equal(s.store.get(rec.id), undefined);
 });

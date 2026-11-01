@@ -345,6 +345,8 @@ function registerIpc({
   ipcMain.handle(CHANNELS.worktreeStatus, async (_e, ...args) => {
     expectArgs(args, 1);
     const rec = ownAgent(args[0]);
+    // A folder deleted from outside has nothing to lose; git cannot run in it.
+    if (!worktree.exists(rec.worktreePath)) return { dirty: false, missing: true, branch: rec.branch, path: rec.worktreePath };
     return { dirty: await worktree.isDirty(rec.worktreePath), branch: rec.branch, path: rec.worktreePath };
   });
 
@@ -446,7 +448,7 @@ function registerIpc({
     if (typeof discardChanges !== 'boolean') throw new Error('invalid discardChanges');
     const removing = cleanup !== 'keep';
     // Checked here, not only in the dialog: the worktree may have changed since.
-    const dirty = removing && (await worktree.isDirty(rec.worktreePath));
+    const dirty = removing && worktree.exists(rec.worktreePath) && (await worktree.isDirty(rec.worktreePath));
     if (dirty && !discardChanges) throw new Error('Worktree punya perubahan yang belum di-commit. Konfirmasi untuk membuangnya.');
 
     const agent = agents.get(agentId);

@@ -53,7 +53,7 @@ async function openStopDialog(agent) {
   try {
     const st = await window.zonder.worktreeStatus(agent.id);
     stopUi.dirty = st.dirty;
-    stopField('stInfo').textContent = `Branch ${st.branch} · ${st.path}`;
+    stopField('stInfo').textContent = st.missing ? `Branch ${st.branch} · folder worktree sudah tidak ada` : `Branch ${st.branch} · ${st.path}`;
   } catch (err) {
     stopField('stInfo').textContent = `Status worktree tidak terbaca: ${ipcMessage(err)}`;
   }
