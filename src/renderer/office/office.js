@@ -268,7 +268,9 @@ function startOffice(canvas, { getAgents, onSelect, getSelected = () => null }) 
     cancelAnimationFrame(raf);
     raf = 0;
   }
-  const onVisibility = () => (document.hidden ? pause() : run());
+  // Hidden by the owner (layout toggle): no frames until shown again.
+  let hiddenByLayout = false;
+  const onVisibility = () => (document.hidden || hiddenByLayout ? pause() : run());
 
   canvas.addEventListener('click', onClick);
   canvas.addEventListener('mousemove', onMove);
@@ -276,6 +278,10 @@ function startOffice(canvas, { getAgents, onSelect, getSelected = () => null }) 
   run();
 
   return {
+    setHidden(hidden) {
+      hiddenByLayout = hidden;
+      onVisibility();
+    },
     stop() {
       pause();
       canvas.removeEventListener('click', onClick);

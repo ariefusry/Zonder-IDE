@@ -402,11 +402,12 @@ async function load() {
   initSettings();
   refreshRouter();
   initStopDialog();
-  startOffice(document.getElementById('office'), {
+  const office = startOffice(document.getElementById('office'), {
     getAgents: () => state.agents,
     getSelected: () => state.selected,
     onSelect: select,
   });
+  initLayout({ office });
   renderChrome();
   try {
     window.zonder.subscribeAgentEvents(onAgentEvent);
