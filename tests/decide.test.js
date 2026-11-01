@@ -152,3 +152,47 @@ test('quoted text with spaces is not mistaken for a path', () => {
 test('URLs are not treated as paths', () => {
   assert.equal(decide('Senior Developer', sh('git push https://example.com/r.git'), ctx()).hard, false);
 });
+
+// Roles as data (settings plan Task 14): a policy object decides like its built-in name.
+const { createRoles, snapshot } = require('../src/main/roles.js');
+
+test('every built-in name and its snapshot() give the same verdict for each action', () => {
+  const roles = createRoles();
+  for (const role of ROLES) {
+    const policy = snapshot(roles.get(role));
+    for (const [name, action] of Object.entries({ ...A, ...HARD })) {
+      const a = decide(role, action, ctx());
+      const b = decide(policy, action, ctx());
+      assert.equal(b.verdict, a.verdict, `${role} / ${name}`);
+      assert.equal(b.hard, a.hard, `${role} / ${name}`);
+      assert.equal(Boolean(b.grantKey), Boolean(a.grantKey), `${role} / ${name}`);
+    }
+  }
+});
+
+test('custom policy Designer ask/ask: write asks with a grant key, npm test asks, hard blocks stay', () => {
+  const p = { name: 'Designer', write: 'ask', shell: 'ask', skills: [], disableSkills: false };
+  const w = decide(p, { kind: 'write', tool: 'Write', path: path.join(wt, 'src', 'a.css') }, ctx());
+  assert.equal(w.verdict, 'ask');
+  assert.ok(w.grantKey);
+  assert.match(w.reason, /Designer/);
+  assert.equal(decide(p, sh('npm test'), ctx()).verdict, 'ask');
+  for (const action of [HARD.credentialWrite, HARD.forcePush]) {
+    const d = decide(p, action, ctx());
+    assert.deepEqual([d.verdict, d.hard], ['deny', true]);
+  }
+});
+
+test('policy allow/auto: delete, rm, install, and push still ask without a grant key', () => {
+  const p = { name: 'X', write: 'allow', shell: 'auto', skills: [], disableSkills: false };
+  for (const action of [A.deleteFile, sh('rm -rf x'), A.install, A.push]) {
+    const d = decide(p, action, ctx());
+    assert.equal(d.verdict, 'ask');
+    assert.equal(d.grantKey, undefined);
+  }
+});
+
+test('a policy with unknown permission values is denied', () => {
+  assert.equal(decide({ name: 'X', write: 'yes', shell: 'ask' }, A.write, ctx()).verdict, 'deny');
+  assert.equal(decide({ name: 'X', write: 'ask', shell: 'root' }, A.shTest, ctx()).verdict, 'deny');
+});

@@ -191,3 +191,28 @@ test('replayHistory rebuilds the router conversation from user and agent message
     { role: 'assistant', content: 'Isinya x.' },
   ]);
 });
+
+test('resumeAgent applies the current role policy; a deleted custom role keeps its copy and is marked', async () => {
+  const { createRoles, snapshot } = require('../src/main/roles.js');
+  const roles = createRoles();
+  const d = roles.save({ name: 'Designer', persona: '', write: 'ask', shell: 'ask', skills: [], disableSkills: false });
+  const handlers = {};
+  const store = new AgentStore();
+  store.add(rec('a1', { status: 'stopped', role: 'Junior Developer' }));
+  store.add(rec('a2', { status: 'stopped', role: 'Designer', rolePolicy: snapshot(d) }));
+  registerIpc({
+    ipcMain: { handle: (ch, fn) => { handlers[ch] = fn; } },
+    store, getWindow: () => null, approvals: new Approvals({ store }),
+    persistence: { saveAgents: () => {}, loadHistory: () => [] },
+    agents: new Map(), worktree: { exists: () => true }, roles,
+    createAgent: (r) => fakeAgent(store, r, []),
+  });
+  roles.save({ ...roles.get('Junior Developer'), write: 'deny' });
+  await handlers[CHANNELS.resumeAgent]({}, 'a1');
+  assert.equal(store.get('a1').rolePolicy.write, 'deny');
+  assert.equal(store.get('a1').roleDeleted, false);
+  roles.remove('Designer');
+  await handlers[CHANNELS.resumeAgent]({}, 'a2');
+  assert.equal(store.get('a2').rolePolicy.write, 'ask');
+  assert.equal(store.get('a2').roleDeleted, true);
+});

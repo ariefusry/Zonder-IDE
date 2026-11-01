@@ -198,3 +198,15 @@ test('a removed agent loses its session grants', async () => {
   s.approvals.handle('a1', write(), s.ctx);
   assert.equal(s.requests().length, 2, 'asks again');
 });
+
+test('decideFn receives record.rolePolicy when present, else record.role', async () => {
+  const store = new AgentStore();
+  const policy = { name: 'Designer', write: 'ask', shell: 'ask', skills: [], disableSkills: false };
+  store.add({ id: 'p1', role: 'Designer', rolePolicy: policy, status: 'idle' });
+  store.add({ id: 'p2', role: 'Reviewer', status: 'idle' });
+  const seen = [];
+  const approvals = new Approvals({ store, decideFn: (r) => { seen.push(r); return { verdict: 'allow', reason: 'ok', hard: false }; } });
+  await approvals.handle('p1', { kind: 'read', tool: 'Read', path: 'a' }, {});
+  await approvals.handle('p2', { kind: 'read', tool: 'Read', path: 'a' }, {});
+  assert.deepEqual(seen, [policy, 'Reviewer']);
+});

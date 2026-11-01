@@ -59,6 +59,7 @@ if (process.versions.electron) {
   const { RouterAgent } = require('./agents/router-agent.js');
   const { listModels } = require('./agents/router-client.js');
   const { createSecrets } = require('./secrets.js');
+  const { createRoles } = require('./roles.js');
   const store = new AgentStore();
   const approvals = new Approvals({ store });
   // Running agent processes by id; records without one (samples) cannot chat.
@@ -78,6 +79,7 @@ if (process.versions.electron) {
     const dataDir = process.env.ZONDER_DATA_DIR || app.getPath('userData');
     persistence = new Persistence(dataDir);
     const secrets = createSecrets({ dir: dataDir, safeStorage });
+    const roles = createRoles({ dir: dataDir });
     // Saved agents come back stopped; the owner resumes each one from its chat.
     if (!MOCK) restoreAgents({ store, persistence });
     registerIpc({
@@ -92,6 +94,7 @@ if (process.versions.electron) {
         : new ClaudeAgent({ record, store, persistence, approvals })),
       pickFolder,
       router: { defaultUrl: ROUTER_URL, secrets, listModels },
+      roles,
     });
     win = createWindow(BrowserWindow);
     app.on('activate', () => {

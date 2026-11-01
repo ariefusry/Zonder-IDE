@@ -4,8 +4,7 @@
 const { randomBytes } = require('node:crypto');
 const path = require('node:path');
 const { CLAUDE_MODELS } = require('./agents/claude-agent.js');
-const { ROLES } = require('./policy/decide.js');
-const { PERSONAS } = require('./personas.js');
+const { createRoles, snapshot, policyForResume } = require('./roles.js');
 const { RouterOffline } = require('./agents/router-client.js');
 
 const CHANNELS = {
@@ -27,6 +26,10 @@ const CHANNELS = {
   resumeAgent: 'zonder:resumeAgent',
   findOrphans: 'zonder:findOrphans',
   cleanupOrphan: 'zonder:cleanupOrphan',
+  listRoles: 'zonder:listRoles',
+  saveRole: 'zonder:saveRole',
+  deleteRole: 'zonder:deleteRole',
+  resetRole: 'zonder:resetRole',
 };
 
 const AGENT_ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -79,6 +82,8 @@ function registerIpc({
   router,
   newId = () => randomBytes(6).toString('hex'),
   retryDelayMs = 500,
+  // Built-ins only, in memory, when main.js does not pass the roles.json store.
+  roles = createRoles(),
 }) {
   // Only folders the owner picked in the native dialog may become a workspace:
   // the path is the policy's "main checkout", so the renderer cannot supply it.
@@ -144,7 +149,8 @@ function registerIpc({
     const name = typeof cfg.name === 'string' ? cfg.name.trim() : '';
     if (!name || name.length > 40) throw new Error('Nama harus 1 sampai 40 karakter.');
     if (store.list().some((r) => r.name.toLowerCase() === name.toLowerCase())) throw new Error(`Nama "${name}" sudah dipakai agent lain.`);
-    if (!ROLES.includes(cfg.role)) throw new Error('Peran tidak dikenal.');
+    const role = roles.get(cfg.role);
+    if (!role) throw new Error('Peran tidak dikenal.');
     if (!KINDS.includes(cfg.kind)) throw new Error('Jenis agent ini belum tersedia.');
     if (cfg.kind === 'router') {
       const health = await checkRouter();
@@ -162,7 +168,7 @@ function registerIpc({
     const taken = new Set(store.list().map((r) => r.slug).filter(Boolean));
     const tree = await worktree.createWorktree({ repo, baseBranch: cfg.baseBranch, name, agentId: id, taken });
     const record = store.add({
-      id, name, slug: tree.slug, role: cfg.role, kind: cfg.kind, model: cfg.model, persona: cfg.systemPrompt,
+      id, name, slug: tree.slug, role: role.name, rolePolicy: snapshot(role), kind: cfg.kind, model: cfg.model, persona: cfg.systemPrompt,
       workspace: repo, baseBranch: cfg.baseBranch, worktreePath: tree.path, branch: tree.branch,
       sessionId: null, status: 'stopped', createdAt: Date.now(),
     });
@@ -200,7 +206,32 @@ function registerIpc({
 
   ipcMain.handle(CHANNELS.spawnOptions, (_e, ...args) => {
     expectArgs(args, 0);
-    return { roles: ROLES.map((role) => ({ role, prompt: PERSONAS[role] })), models: CLAUDE_MODELS, kinds: KINDS };
+    return { roles: roles.list().map((r) => ({ role: r.name, prompt: r.persona })), models: CLAUDE_MODELS, kinds: KINDS };
+  });
+
+  ipcMain.handle(CHANNELS.listRoles, (_e, ...args) => {
+    expectArgs(args, 0);
+    return roles.list();
+  });
+
+  ipcMain.handle(CHANNELS.saveRole, (_e, ...args) => {
+    expectArgs(args, 1);
+    return roles.save(args[0]);
+  });
+
+  const roleName = (name) => {
+    if (typeof name !== 'string' || !name || name.length > 40) throw new Error('invalid role name');
+    return name;
+  };
+
+  ipcMain.handle(CHANNELS.deleteRole, (_e, ...args) => {
+    expectArgs(args, 1);
+    roles.remove(roleName(args[0]));
+  });
+
+  ipcMain.handle(CHANNELS.resetRole, (_e, ...args) => {
+    expectArgs(args, 1);
+    return roles.reset(roleName(args[0]));
   });
 
   ipcMain.handle(CHANNELS.setRouterKey, async (_e, ...args) => {
@@ -257,6 +288,8 @@ function registerIpc({
     const rec = ownAgent(args[0]);
     if (rec.status !== 'stopped' && rec.status !== 'error') throw new Error('Agent sudah berjalan.');
     if (!worktree.exists(rec.worktreePath)) throw new Error(`Worktree agent sudah tidak ada: ${rec.worktreePath}`);
+    // The role as it is now applies on resume; a deleted role keeps its stored copy.
+    Object.assign(rec, policyForResume(rec, roles));
     // Claude resumes its session via --resume; a router agent replays its history on start.
     let agent = agents.get(rec.id);
     if (!agent) {

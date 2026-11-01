@@ -8,7 +8,7 @@ const { PERSONAS } = require('../src/main/personas.js');
 
 const REPO = 'C:\\proj\\repo';
 
-function setup({ startStatus = 'idle', createFails = false, removeFailures = 0, dirty = false, pick = REPO } = {}) {
+function setup({ startStatus = 'idle', createFails = false, removeFailures = 0, dirty = false, pick = REPO, roles } = {}) {
   const handlers = {};
   const store = new AgentStore();
   store.add({ id: 'a1', name: 'Contoh', sample: true, status: 'idle', workspace: '(contoh)', worktreePath: '(contoh)' });
@@ -59,6 +59,7 @@ function setup({ startStatus = 'idle', createFails = false, removeFailures = 0, 
     pickFolder: async () => pick,
     newId: () => `id${String(++ids).padStart(6, '0')}`,
     retryDelayMs: 0,
+    roles,
   });
   const call = (ch, ...args) => handlers[ch]({}, ...args);
   const cfg = (extra) => ({ name: 'Raka', role: 'Junior Developer', systemPrompt: 'Persona X', kind: 'claude', model: 'haiku', workspace: REPO, baseBranch: 'main', ...extra });
@@ -250,4 +251,50 @@ test('a kept (stopped) agent can still have its worktree cleaned up later', asyn
   await s.call(CHANNELS.stopAgent, rec.id, 'keep', false);
   await s.call(CHANNELS.stopAgent, rec.id, 'worktree+branch', false);
   assert.equal(s.store.get(rec.id), undefined);
+});
+
+// Roles as data (settings plan Task 14).
+const { createRoles, snapshot } = require('../src/main/roles.js');
+const DESIGNER = { name: 'Designer', persona: 'Kamu Designer.', write: 'ask', shell: 'ask', skills: [], disableSkills: false };
+
+test('spawn with role "Designer" stores record.rolePolicy = snapshot(Designer) and the persona from cfg', async () => {
+  const roles = createRoles();
+  roles.save(DESIGNER);
+  const s = setup({ roles });
+  await picked(s);
+  const rec = await s.call(CHANNELS.spawnAgent, s.cfg({ role: 'Designer', systemPrompt: 'Persona khusus' }));
+  assert.deepEqual(rec.rolePolicy, snapshot(roles.get('Designer')));
+  assert.equal(rec.persona, 'Persona khusus');
+  const o = await s.call(CHANNELS.spawnOptions);
+  assert.deepEqual(o.roles.at(-1), { role: 'Designer', prompt: 'Kamu Designer.' });
+});
+
+test('editing Designer after spawn leaves the running record unchanged', async () => {
+  const roles = createRoles();
+  roles.save(DESIGNER);
+  const s = setup({ roles });
+  await picked(s);
+  const rec = await s.call(CHANNELS.spawnAgent, s.cfg({ role: 'Designer' }));
+  roles.save({ ...DESIGNER, write: 'allow' });
+  assert.equal(s.store.get(rec.id).rolePolicy.write, 'ask');
+});
+
+test('spawn with an unknown role is refused', async () => {
+  const s = setup();
+  await picked(s);
+  await assert.rejects(s.call(CHANNELS.spawnAgent, s.cfg({ role: 'Designer' })), /Peran tidak dikenal./);
+});
+
+test('role channels: list, save, reset, delete', async () => {
+  const s = setup({ roles: createRoles() });
+  assert.equal((await s.call(CHANNELS.listRoles)).length, 6);
+  const saved = await s.call(CHANNELS.saveRole, DESIGNER);
+  assert.equal(saved.builtin, false);
+  await assert.rejects(async () => s.call(CHANNELS.saveRole, { ...DESIGNER, write: 'root' }), /Izin tulis/);
+  await assert.rejects(async () => s.call(CHANNELS.saveRole, null), /invalid role/);
+  const reset = await s.call(CHANNELS.resetRole, 'Reviewer');
+  assert.equal(reset.write, 'deny');
+  await s.call(CHANNELS.deleteRole, 'Designer');
+  assert.equal((await s.call(CHANNELS.listRoles)).length, 6);
+  await assert.rejects(async () => s.call(CHANNELS.deleteRole, 5), /invalid role name/);
 });

@@ -30,7 +30,8 @@ class Approvals {
 
     let d;
     try {
-      d = this.decideFn(rec.role, action, { ...ctx, sessionGrants: this.grants.get(agentId) });
+      // The role copy taken at spawn wins over the name (settings plan Task 14).
+      d = this.decideFn(rec.rolePolicy ?? rec.role, action, { ...ctx, sessionGrants: this.grants.get(agentId) });
     } catch (err) {
       // Fail closed: the agent gets a reason instead of waiting forever.
       return Promise.resolve({ behavior: 'deny', message: `Gagal memeriksa izin: ${err.message}` });

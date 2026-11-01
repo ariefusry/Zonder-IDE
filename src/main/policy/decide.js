@@ -8,7 +8,18 @@ const { isInside, isCredentialPath } = require('./paths.js');
 const { classifyShell, tokenize } = require('./shell.js');
 
 const ROLES = ['Senior Developer', 'Junior Developer', 'Reviewer', 'QA Engineer', 'Researcher', 'Custom'];
-const READ_ONLY = new Set(['Reviewer', 'Researcher']);
+// Permissions of the built-in roles; mirrors BUILTIN in roles.js, which cannot be
+// required here without a cycle through personas. A role name resolves to these.
+const BUILTIN_POLICY = {
+  'Senior Developer': { write: 'allow', shell: 'auto' },
+  'Junior Developer': { write: 'ask', shell: 'ask' },
+  Reviewer: { write: 'deny', shell: 'deny' },
+  'QA Engineer': { write: 'tests', shell: 'auto' },
+  Researcher: { write: 'deny', shell: 'deny' },
+  Custom: { write: 'ask', shell: 'ask' },
+};
+const WRITE = ['deny', 'tests', 'ask', 'allow'];
+const SHELL = ['deny', 'ask', 'auto'];
 
 const allow = (reason) => ({ verdict: 'allow', reason, hard: false });
 const deny = (reason) => ({ verdict: 'deny', reason, hard: false });
@@ -40,28 +51,28 @@ function shellPathBlock(command, ctx) {
 
 const isTestFile = (p) => /(^|[\\/])(tests?|__tests__)[\\/]|\.(test|spec)\.[^\\/]+$/i.test(p);
 
-function decideFile(role, action, ctx) {
+function decideFile(p, action, ctx) {
   if (action.kind === 'read') return allow('Baca file di dalam worktree.');
   if (!action.path) return deny('Path tidak diketahui, aksi ditolak.');
-  if (READ_ONLY.has(role)) return deny(`${role} hanya boleh membaca.`);
-  if (role === 'QA Engineer' && !isTestFile(action.path)) return deny('QA tidak mengubah kode produksi.');
+  if (p.write === 'deny') return deny(`${p.name} hanya boleh membaca.`);
+  if (p.write === 'tests' && !isTestFile(action.path)) return deny(`${p.name} hanya boleh mengubah file tes, bukan kode produksi.`);
   if (action.kind === 'delete') return ask('Menghapus file selalu bertanya.');
-  if (role === 'Senior Developer') return allow('Senior boleh menulis di worktree.');
-  return ask(`${role} butuh persetujuan untuk menulis.`, true);
+  if (p.write === 'allow') return allow(`${p.name} boleh menulis di worktree.`);
+  return ask(`${p.name} butuh persetujuan untuk menulis.`, true);
 }
 
 // install, git push, and delete ask without a grant key, so "allow for this
 // session" never covers them (spec §12a).
-function decideShell(role, cls) {
-  if (READ_ONLY.has(role)) return deny(`${role} tidak mendapat akses shell.`);
+function decideShell(p, cls) {
+  if (p.shell === 'deny') return deny(`${p.name} tidak mendapat akses shell.`);
   if (cls.class === 'install') return ask('Memasang paket selalu bertanya.');
   if (cls.class === 'git-push') return ask('Git push selalu bertanya.');
   if (cls.class === 'delete') return ask('Menghapus selalu bertanya.');
-  const trusted = role === 'Senior Developer' || role === 'QA Engineer';
+  const trusted = p.shell === 'auto';
   if (trusted && cls.class === 'safe-test') return allow('Perintah tes yang dikenali.');
   if (trusted && cls.class === 'git-read') return allow('Perintah Git hanya-baca.');
   if (cls.class === 'unknown') return ask('Perintah tidak dikenali, butuh persetujuan.', true);
-  return ask(`${role} butuh persetujuan untuk perintah ini.`, true);
+  return ask(`${p.name} butuh persetujuan untuk perintah ini.`, true);
 }
 
 function grantKeyFor(action, ctx) {
@@ -69,8 +80,16 @@ function grantKeyFor(action, ctx) {
   return `${action.tool}:${action.path ? path.resolve(ctx.worktree, action.path).toLowerCase() : ''}`;
 }
 
+// A role name (built-in) or a RolePolicy object {name, write, shell} from roles.js.
+function policyOf(role) {
+  if (typeof role === 'string') return BUILTIN_POLICY[role] ? { name: role, ...BUILTIN_POLICY[role] } : null;
+  if (role && typeof role === 'object' && WRITE.includes(role.write) && SHELL.includes(role.shell)) return { name: String(role.name ?? 'Peran'), write: role.write, shell: role.shell };
+  return null;
+}
+
 function decide(role, action, ctx) {
-  if (!ROLES.includes(role)) return deny(`Peran tidak dikenal: ${role}.`);
+  const p = policyOf(role);
+  if (!p) return deny(`Peran tidak dikenal: ${typeof role === 'string' ? role : role?.name ?? '?'}.`);
 
   let d;
   if (action.kind === 'shell') {
@@ -79,11 +98,11 @@ function decide(role, action, ctx) {
     if (cls.class === 'history-rewrite') return hardDeny('Diblokir: menulis ulang riwayat Git tidak pernah diizinkan.');
     const block = shellPathBlock(action.command, ctx);
     if (block) return block;
-    d = decideShell(role, cls);
+    d = decideShell(p, cls);
   } else if (action.kind === 'read' || action.kind === 'write' || action.kind === 'delete') {
     const block = action.path ? pathBlock(action.path, ctx) : null;
     if (block) return block;
-    d = decideFile(role, action, ctx);
+    d = decideFile(p, action, ctx);
   } else {
     d = ask(`Tool tidak dikenal: ${action.tool}.`, true);
   }
