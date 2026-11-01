@@ -43,7 +43,9 @@
   <section class="chat" aria-label="Chat">
     <div class="tabs" id="tabs" role="tablist"></div>
     <div class="chat-head" id="chatHead"></div>
-    <div class="msgs" id="msgs"></div>
+    <div class="view-tabs" id="viewTabs" role="tablist" aria-label="Tampilan agent" hidden></div>
+    <div class="msgs" id="msgs" role="tabpanel" aria-labelledby="view-chat"></div>
+    <div class="changes" id="changes" role="tabpanel" aria-labelledby="view-changes" hidden></div>
     <form class="composer" id="composer">
       <textarea id="input" rows="2" placeholder="Pesan untuk agent..." aria-label="Pesan untuk agent"></textarea>
       <div class="comp-row">
@@ -335,6 +337,7 @@
 <script src="render-message.js"></script>
 <script src="sidebar.js"></script>
 <script src="chat.js"></script>
+<script src="changes.js"></script>
 <script src="spawn-modal.js"></script>
 <script src="stop-dialog.js"></script>
 <script src="settings.js"></script>

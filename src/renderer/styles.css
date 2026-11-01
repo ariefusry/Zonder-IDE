@@ -235,3 +235,33 @@ fieldset.field { border: 0; padding: 0; margin: 0; min-width: 0; gap: 6px; }
 fieldset.field legend { padding: 0; margin-bottom: 4px; }
 .field .choice input { padding: 0; border: 0; background: none; }
 .actions .hint { margin-right: auto; align-self: center; }
+
+/* Chat / Perubahan (layout spec §4.7–§4.8) */
+.view-tabs { display: flex; gap: 4px; padding: 6px 14px 0; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.vtab { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 5px 8px; color: var(--muted); font-size: 11px; }
+.vtab:hover { color: var(--text); }
+.vtab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent-text); }
+.changes { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ch-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; }
+.ch-note { font-size: 11px; color: var(--muted); }
+.ch-body { flex: 1; overflow-y: auto; padding: 10px 14px 14px; min-height: 0; }
+.ch-msg { color: var(--muted); margin: 6px 0 8px; }
+.ch-err { color: var(--st-error); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ch-list { list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.ch-file { width: 100%; display: flex; align-items: center; gap: 8px; padding: 4px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; text-align: left; }
+.ch-file:hover { background: var(--surface-2); }
+.ch-file[aria-pressed="true"] { background: var(--surface-2); border-color: var(--border); }
+.ch-st { font: 600 11px var(--mono); width: 14px; flex-shrink: 0; text-align: center; }
+.ch-M { color: var(--st-approval); }
+.ch-A { color: var(--st-done); }
+.ch-D { color: var(--st-error); }
+.ch-R { color: var(--st-working); }
+.ch-path { font: 11px var(--mono); overflow-wrap: anywhere; }
+.ch-diff { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+.ch-diff h3 { font: 600 11px var(--mono); margin-bottom: 6px; overflow-wrap: anywhere; }
+.ch-diff pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 0; font: 11px/1.45 var(--mono); overflow-x: auto; }
+.dl { display: block; padding: 0 9px; white-space: pre; }
+.dl-add { color: #86efac; background: rgba(34, 197, 94, 0.1); }
+.dl-del { color: #fca5a5; background: rgba(248, 113, 113, 0.1); }
+.dl-hunk { color: var(--st-thinking); }
+.dl-meta { color: var(--muted); }

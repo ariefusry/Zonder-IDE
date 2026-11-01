@@ -68,6 +68,9 @@ const state = {
   router: null,
   // Names of the roles that exist now; null until loaded (and in mock mode).
   roleNames: null,
+  // Per agent, for this session: 'chat' or 'changes', and the Perubahan data.
+  view: new Map(),
+  changes: new Map(),
 };
 
 const handlers = {
@@ -78,6 +81,10 @@ const handlers = {
   onEffort: changeEffort,
   onStop: openStopDialog,
   onResume: resumeAgent,
+  onView: setView,
+  onLoadChanges: loadChanges,
+  onOpenFile: openChangedFile,
+  onOpenWorktree: openWorktree,
 };
 
 function chat(id) {
@@ -89,6 +96,8 @@ function renderChrome() {
   renderSidebar(state, select);
   renderTabs(state, handlers);
   renderHead(state, handlers);
+  renderViewTabs(state, handlers);
+  applyView(state);
   renderComposer(state, handlers);
 
   const note = document.getElementById('centerNote');
@@ -105,12 +114,14 @@ function renderChrome() {
 function render() {
   renderChrome();
   renderMessages(state, handlers);
+  renderChanges(state, handlers);
 }
 
 function select(id) {
   state.selected = id;
   const c = chat(id);
   if (!c.loaded && !c.loading) loadHistory(id);
+  if (viewOf(state, id) === 'changes') loadChanges(id);
   render();
   document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
 }
@@ -189,6 +200,79 @@ function changeEffort(agentId, effort) {
   });
 }
 
+function setView(agentId, view) {
+  state.view.set(agentId, view);
+  renderViewTabs(state, handlers);
+  applyView(state);
+  if (view === 'changes') {
+    renderChanges(state, handlers);
+    loadChanges(agentId);
+  } else {
+    renderMessages(state, handlers);
+  }
+}
+
+function renderChangesFor(agentId) {
+  if (state.selected !== agentId) return;
+  renderViewTabs(state, handlers);
+  renderChanges(state, handlers);
+}
+
+// Results are kept per agent; one that answers after a newer request is dropped,
+// and nothing is drawn unless that agent is still the one on screen.
+async function loadChanges(agentId) {
+  const c = changesOf(state, agentId);
+  const seq = ++c.seq;
+  c.loading = true;
+  c.folderError = null;
+  renderChangesFor(agentId);
+  try {
+    const r = await window.zonder.listChanges(agentId);
+    if (seq !== c.seq) return;
+    c.files = r.files;
+    c.base = r.base;
+    c.error = null;
+    if (c.open && !r.files.some((f) => f.path === c.open)) {
+      c.open = null;
+      c.diff = null;
+    } else if (c.open) {
+      openChangedFile(agentId, c.open);
+    }
+  } catch (err) {
+    if (seq !== c.seq) return;
+    c.error = ipcMessage(err);
+  }
+  c.loading = false;
+  renderChangesFor(agentId);
+}
+
+async function openChangedFile(agentId, file) {
+  const c = changesOf(state, agentId);
+  const seq = ++c.diffSeq;
+  c.open = file;
+  c.diff = { loading: true };
+  renderChangesFor(agentId);
+  try {
+    const d = await window.zonder.fileDiff(agentId, file);
+    if (seq === c.diffSeq) c.diff = d;
+  } catch (err) {
+    if (seq === c.diffSeq) c.diff = { error: ipcMessage(err) };
+  }
+  renderChangesFor(agentId);
+}
+
+function openWorktree(agentId) {
+  const c = changesOf(state, agentId);
+  window.zonder.openWorktree(agentId).then(
+    () => { c.folderError = null; },
+    (err) => {
+      c.folderError = ipcMessage(err);
+      // A folder that is gone is the panel's own state, not just a button error.
+      if (c.folderError === WORKTREE_GONE) c.error = WORKTREE_GONE;
+    },
+  ).then(() => renderChangesFor(agentId));
+}
+
 async function resumeAgent(a) {
   if (state.resuming) return;
   state.resuming = a.id;
@@ -206,6 +290,8 @@ function removeAgent(id) {
   state.agents = state.agents.filter((a) => a.id !== id);
   delete state.chats[id];
   delete state.queue[id];
+  state.view.delete(id);
+  state.changes.delete(id);
   if (state.selected === id) {
     state.selected = null;
     if (state.agents.length) select(state.agents[0].id);
@@ -238,6 +324,8 @@ function onAgentEvent(evt) {
   const a = state.agents.find((x) => x.id === evt.agentId);
   if (!a) refreshAgents();
   if (evt.type === 'status' && a) a.status = evt.to;
+  // A finished turn may have changed files; recount while Perubahan is open.
+  if (evt.type === 'status' && ['idle', 'done', 'error'].includes(evt.to) && state.selected === evt.agentId && viewOf(state, evt.agentId) === 'changes') loadChanges(evt.agentId);
   if (evt.type === 'model' && a) a.model = evt.model;
   if (evt.type === 'effort' && a) {
     a.effort = evt.effort;
