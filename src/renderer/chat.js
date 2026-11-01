@@ -30,6 +30,12 @@ function renderHead(state, handlers) {
   const st = el('span', { class: 'st' }, STATUS[a.status].label);
   st.style.setProperty('--c', STATUS[a.status].color);
   head.append(el('b', {}, a.name), st, el('span', { class: 'role' }, a.role));
+  if (!a.sample && (a.status === 'stopped' || a.status === 'error')) {
+    const resume = el('button', { class: 'btn btn-primary btn-resume' }, state.resuming === a.id ? 'Menyalakan...' : 'Lanjutkan');
+    resume.disabled = state.resuming === a.id;
+    resume.addEventListener('click', () => handlers.onResume(a));
+    head.append(resume);
+  }
   if (!a.sample) {
     const stop = el('button', { class: 'btn btn-stop', 'aria-haspopup': 'dialog' }, a.status === 'stopped' ? 'Bersihkan' : 'Hentikan');
     stop.addEventListener('click', () => handlers.onStop(a));
@@ -43,9 +49,12 @@ function renderComposer(state, handlers) {
   const a = selectedAgent(state);
   const input = document.getElementById('input');
   const model = document.getElementById('model');
-  // The input stays enabled during a turn: messages sent then are queued.
-  input.disabled = !a;
-  document.getElementById('send').disabled = !a;
+  // The input stays enabled during a turn: messages sent then are queued. A
+  // stopped agent has no process until the owner clicks Lanjutkan.
+  const stopped = Boolean(a && !a.sample && a.status === 'stopped');
+  input.disabled = !a || stopped;
+  input.placeholder = stopped ? 'Agent berhenti. Klik Lanjutkan untuk menyalakannya lagi.' : 'Pesan untuk agent...';
+  document.getElementById('send').disabled = !a || stopped;
   document.getElementById('interrupt').hidden = !a || !BUSY.includes(a.status);
   const queued = a ? state.queue[a.id] || 0 : 0;
   document.getElementById('queue').textContent = queued ? `${queued} pesan menunggu` : '';

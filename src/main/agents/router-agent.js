@@ -25,6 +25,19 @@ function systemPrompt(record) {
   return record.persona && record.persona.trim() ? `${base}\n\n${record.persona}` : base;
 }
 
+// Rebuild the conversation after a relaunch from the persisted chat history.
+// Tool rounds are not replayed: their call ids and arguments are not stored, and a
+// tool_calls message without its answers would make the router reject the request.
+function replayHistory(events) {
+  const messages = [];
+  for (const e of events) {
+    if (e.type !== 'message' || typeof e.text !== 'string' || !e.text.trim()) continue;
+    if (e.role === 'user') messages.push({ role: 'user', content: e.text });
+    else if (e.role === 'agent') messages.push({ role: 'assistant', content: e.text });
+  }
+  return messages;
+}
+
 class RouterAgent {
   constructor({ record, store, persistence, approvals, getKey, baseUrl, fetch = globalThis.fetch, tools = routerTools, toolCtx = {}, doneIdleMs = 30000 }) {
     this.record = record;
@@ -54,6 +67,11 @@ class RouterAgent {
   async start() {
     if (this.running) return;
     this.stopping = false;
+    // A fresh object for a stored agent (resume after relaunch) starts from its history.
+    if (!this.replayed) {
+      this.replayed = true;
+      if (!this.messages.length && this.persistence?.loadHistory) this.messages = replayHistory(this.persistence.loadHistory(this.record.id));
+    }
     this.setStatus('starting');
     const key = await this.getKey();
     if (!key) {
@@ -292,4 +310,4 @@ function displayInput(args) {
   return Object.fromEntries(Object.entries(args).map(([k, v]) => [k, typeof v === 'string' ? cap(v, INPUT_FIELD_CAP) : v]));
 }
 
-module.exports = { RouterAgent, MAX_TOOL_ROUNDS, systemPrompt };
+module.exports = { RouterAgent, MAX_TOOL_ROUNDS, systemPrompt, replayHistory };

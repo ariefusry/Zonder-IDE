@@ -20,6 +20,9 @@ contextBridge.exposeInMainWorld('zonder', {
   // {baseUrl, key}: the key goes in only; no method ever returns it.
   setRouterKey: (config) => ipcRenderer.invoke('zonder:setRouterKey', config),
   listModels: () => ipcRenderer.invoke('zonder:listModels'),
+  resumeAgent: (agentId) => ipcRenderer.invoke('zonder:resumeAgent', agentId),
+  findOrphans: () => ipcRenderer.invoke('zonder:findOrphans'),
+  cleanupOrphan: (wtPath, cleanup, discardChanges) => ipcRenderer.invoke('zonder:cleanupOrphan', wtPath, cleanup, discardChanges),
   subscribeAgentEvents: (cb) => {
     // Pass only the event payload; the IpcRendererEvent would leak sender access.
     const listener = (_e, evt) => cb(evt);

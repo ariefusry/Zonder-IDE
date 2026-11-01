@@ -97,4 +97,25 @@ async function isDirty(wtPath) {
   return (await git(wtPath, ['status', '--porcelain'])) !== '';
 }
 
-module.exports = { isGitRepo, listBranches, currentBranch, makeSlug, createWorktree, removeWorktree, isDirty };
+function exists(wtPath) {
+  return fs.existsSync(wtPath);
+}
+
+// Worktrees git knows of under this repo's .zonder-worktrees folder: [{path, branch}].
+async function listAgentWorktrees(repo) {
+  const dir = worktreesDir(repo);
+  const out = [];
+  let cur = null;
+  for (const line of (await git(repo, ['worktree', 'list', '--porcelain'])).split(/\r?\n/)) {
+    if (line.startsWith('worktree ')) {
+      cur = { path: path.resolve(line.slice(9)), branch: null };
+      const rel = path.relative(dir, cur.path);
+      if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) out.push(cur);
+    } else if (line.startsWith('branch refs/heads/') && cur) {
+      cur.branch = line.slice('branch refs/heads/'.length);
+    }
+  }
+  return out;
+}
+
+module.exports = { isGitRepo, listBranches, currentBranch, makeSlug, createWorktree, removeWorktree, isDirty, exists, listAgentWorktrees };

@@ -76,6 +76,7 @@ const handlers = {
   onToggleTool: toggleTool,
   onModel: changeModel,
   onStop: openStopDialog,
+  onResume: resumeAgent,
 };
 
 function chat(id) {
@@ -177,6 +178,19 @@ function changeModel(agentId, model) {
     renderComposer(state, handlers);
     addLocal(agentId, { type: 'error', message: `Model gagal diganti: ${err.message}` });
   });
+}
+
+async function resumeAgent(a) {
+  if (state.resuming) return;
+  state.resuming = a.id;
+  renderHead(state, handlers);
+  try {
+    await window.zonder.resumeAgent(a.id);
+  } catch (err) {
+    addLocal(a.id, { type: 'error', message: `Agent gagal dilanjutkan: ${ipcMessage(err)}` });
+  }
+  state.resuming = null;
+  renderChrome();
 }
 
 function removeAgent(id) {
@@ -376,6 +390,7 @@ async function load() {
   state.loading = false;
   if (state.agents.length) select(state.agents[0].id);
   else render();
+  if (!mock) checkOrphans();
 }
 
 load();

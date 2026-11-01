@@ -470,3 +470,26 @@ test('setModel switches the model for the next request', async () => {
     s.cleanup();
   }
 });
+
+test('start after a relaunch replays stored history into the first request, once', async () => {
+  const history = [
+    { type: 'message', role: 'user', text: 'nama saya Arief' },
+    { type: 'message', role: 'agent', text: 'Halo Arief.' },
+  ];
+  const s = setup({ agent: { persistence: { appendEvent: () => {}, loadHistory: () => history } } });
+  await s.agent.start();
+  s.agent.send('siapa nama saya?');
+  await until(() => s.router.requests.length === 1 && s.record.status !== 'thinking');
+  assert.deepEqual(s.router.requests[0].messages.slice(1), [
+    { role: 'user', content: 'nama saya Arief' },
+    { role: 'assistant', content: 'Halo Arief.' },
+    { role: 'user', content: 'siapa nama saya?' },
+  ]);
+  await s.agent.stop();
+  await s.agent.start();
+  s.agent.send('lagi');
+  await until(() => s.router.requests.length === 2);
+  assert.equal(s.router.requests[1].messages.filter((m) => m.content === 'nama saya Arief').length, 1);
+  await s.agent.stop();
+  s.cleanup();
+});

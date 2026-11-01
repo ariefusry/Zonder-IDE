@@ -59,6 +59,14 @@ class AgentStore {
     this.emit({ agentId: id, type: 'status', from, to: next });
   }
 
+  // On quit and after a relaunch no process is running, so every real record is
+  // stopped. Samples (mock mode) keep their status: nothing runs behind them.
+  markAllStopped() {
+    for (const rec of this.records.values()) {
+      if (!rec.sample && rec.status !== 'stopped') this.setStatus(rec.id, 'stopped');
+    }
+  }
+
   emit(evt) {
     const stamped = { ts: Date.now(), ...evt };
     for (const cb of this.subscribers) cb(stamped);

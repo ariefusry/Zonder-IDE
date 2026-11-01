@@ -52,7 +52,7 @@ function seedMock(store) {
 if (process.versions.electron) {
   const { app, BrowserWindow, ipcMain, dialog, safeStorage } = require('electron');
   const { AgentStore } = require('./store.js');
-  const { registerIpc } = require('./ipc.js');
+  const { registerIpc, shutdown, restoreAgents } = require('./ipc.js');
   const { Approvals } = require('./approvals.js');
   const { Persistence } = require('./persistence.js');
   const { ClaudeAgent } = require('./agents/claude-agent.js');
@@ -78,6 +78,8 @@ if (process.versions.electron) {
     const dataDir = process.env.ZONDER_DATA_DIR || app.getPath('userData');
     persistence = new Persistence(dataDir);
     const secrets = createSecrets({ dir: dataDir, safeStorage });
+    // Saved agents come back stopped; the owner resumes each one from its chat.
+    if (!MOCK) restoreAgents({ store, persistence });
     registerIpc({
       ipcMain,
       store,
@@ -97,17 +99,14 @@ if (process.versions.electron) {
     });
   });
   app.on('window-all-closed', () => app.quit());
-  // Stop every agent process before quitting (full resume flow is Task 12).
+  // Stop every agent process before quitting, then save the records as stopped
+  // (with their session ids) so the next launch can resume them.
   let stopping = false;
   app.on('before-quit', (e) => {
     if (stopping || !agents.size) return;
     e.preventDefault();
     stopping = true;
-    Promise.allSettled([...agents.values()].map((a) => a.stop())).then(() => {
-      // Session ids and stopped statuses reach disk for the resume flow (Task 12).
-      persistence?.saveAgents(store.list().filter((r) => !r.sample));
-      app.quit();
-    });
+    shutdown({ agents, store, persistence }).finally(() => app.quit());
   });
 }
 

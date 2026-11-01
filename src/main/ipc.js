@@ -2,6 +2,7 @@
 // the renderer is never trusted.
 
 const { randomBytes } = require('node:crypto');
+const path = require('node:path');
 const { CLAUDE_MODELS } = require('./agents/claude-agent.js');
 const { ROLES } = require('./policy/decide.js');
 const { PERSONAS } = require('./personas.js');
@@ -23,6 +24,9 @@ const CHANNELS = {
   stopAgent: 'zonder:stopAgent',
   setRouterKey: 'zonder:setRouterKey',
   listModels: 'zonder:listModels',
+  resumeAgent: 'zonder:resumeAgent',
+  findOrphans: 'zonder:findOrphans',
+  cleanupOrphan: 'zonder:cleanupOrphan',
 };
 
 const AGENT_ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -36,6 +40,27 @@ const REMOVE_TRIES = 3;
 const DECISIONS = ['once', 'session', 'deny'];
 const KINDS = ['claude', 'router'];
 const MAX_KEY = 1000;
+
+// Quit: stop every process, then save every real record as stopped so the next
+// launch can resume it. One agent failing to stop must not block the save.
+async function shutdown({ agents, store, persistence }) {
+  await Promise.allSettled([...agents.values()].map((a) => a.stop()));
+  agents.clear();
+  store.markAllStopped();
+  persistence?.saveAgents(store.list().filter((r) => !r.sample));
+}
+
+// Launch: saved records come back stopped; no process runs until the owner resumes one.
+function restoreAgents({ store, persistence }) {
+  let count = 0;
+  for (const r of persistence.loadAgents()) {
+    if (!r || typeof r !== 'object' || !AGENT_ID.test(String(r.id)) || !KINDS.includes(r.kind) || store.get(r.id)) continue;
+    store.add({ ...r, sample: undefined });
+    count++;
+  }
+  store.markAllStopped();
+  return count;
+}
 
 function expectArgs(args, count) {
   if (args.length !== count) throw new Error(`expected ${count} arguments, got ${args.length}`);
@@ -227,6 +252,60 @@ function registerIpc({
     return { dirty: await worktree.isDirty(rec.worktreePath), branch: rec.branch, path: rec.worktreePath };
   });
 
+  ipcMain.handle(CHANNELS.resumeAgent, async (_e, ...args) => {
+    expectArgs(args, 1);
+    const rec = ownAgent(args[0]);
+    if (rec.status !== 'stopped' && rec.status !== 'error') throw new Error('Agent sudah berjalan.');
+    if (!worktree.exists(rec.worktreePath)) throw new Error(`Worktree agent sudah tidak ada: ${rec.worktreePath}`);
+    // Claude resumes its session via --resume; a router agent replays its history on start.
+    let agent = agents.get(rec.id);
+    if (!agent) {
+      agent = createAgent(rec);
+      agents.set(rec.id, agent);
+    }
+    await agent.start();
+    saveRegistry();
+    return rec;
+  });
+
+  // Worktrees under .zonder-worktrees that no record owns (a lost registry entry,
+  // a crash mid-spawn). Only paths reported here may be cleaned up.
+  let orphans = new Map();
+  const pathKey = (p) => path.resolve(p).toLowerCase();
+  ipcMain.handle(CHANNELS.findOrphans, async (_e, ...args) => {
+    expectArgs(args, 0);
+    const owned = new Set(store.list().filter((r) => !r.sample).map((r) => pathKey(r.worktreePath)));
+    const repos = new Set([...store.list().filter((r) => !r.sample).map((r) => r.workspace), ...pickedRepos]);
+    const found = new Map();
+    for (const repo of repos) {
+      let trees;
+      try {
+        trees = await worktree.listAgentWorktrees(repo);
+      } catch {
+        continue; // Repo moved or deleted: nothing to offer for it.
+      }
+      for (const t of trees) {
+        if (!owned.has(pathKey(t.path))) found.set(pathKey(t.path), { repo, path: t.path, branch: t.branch });
+      }
+    }
+    orphans = found;
+    return [...found.values()];
+  });
+
+  ipcMain.handle(CHANNELS.cleanupOrphan, async (_e, ...args) => {
+    expectArgs(args, 3);
+    const [wtPath, cleanup, discardChanges] = args;
+    if (cleanup !== 'worktree' && cleanup !== 'worktree+branch') throw new Error(`invalid cleanup: ${cleanup}`);
+    if (typeof discardChanges !== 'boolean') throw new Error('invalid discardChanges');
+    const o = typeof wtPath === 'string' ? orphans.get(pathKey(wtPath)) : null;
+    if (!o) throw new Error('Worktree tidak dikenal. Periksa ulang worktree yatim.');
+    const dirty = await worktree.isDirty(o.path);
+    if (dirty && !discardChanges) throw new Error('Worktree punya perubahan yang belum di-commit. Konfirmasi untuk membuangnya.');
+    const deleteBranch = cleanup === 'worktree+branch' && Boolean(o.branch);
+    await removeWithRetry({ repo: o.repo, path: o.path, branch: o.branch, deleteBranch, force: dirty });
+    orphans.delete(pathKey(o.path));
+  });
+
   ipcMain.handle(CHANNELS.stopAgent, async (_e, ...args) => {
     expectArgs(args, 3);
     const [agentId, cleanup, discardChanges] = args;
@@ -304,4 +383,4 @@ function registerIpc({
   });
 }
 
-module.exports = { registerIpc, CHANNELS };
+module.exports = { registerIpc, CHANNELS, shutdown, restoreAgents };

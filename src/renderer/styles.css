@@ -123,6 +123,8 @@ pre.code { background: var(--bg); border: 1px solid var(--border); border-radius
 .send:not(:disabled):hover { background: #fff; }
 
 .chat-head .btn-stop { margin-left: 8px; height: 24px; }
+.chat-head .btn-resume { margin-left: auto; height: 24px; }
+.chat-head .btn-resume + .btn-stop { margin-left: 8px; }
 
 /* Dialogs: one surface, no blur. Shadow only here, since a modal sits above the page. */
 .modal { margin: auto; width: min(480px, calc(100vw - 32px)); max-height: calc(100vh - 48px); background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; box-shadow: 0 12px 32px rgba(0, 0, 0, .55); }

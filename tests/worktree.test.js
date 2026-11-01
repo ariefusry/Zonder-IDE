@@ -144,3 +144,15 @@ test('currentBranch names the checked-out branch, null when detached', async (t)
   git(repo, 'checkout', '-q', '--detach');
   assert.equal(await wt.currentBranch(repo), null);
 });
+
+test('listAgentWorktrees lists only worktrees under .zonder-worktrees, with their branch', async (t) => {
+  const { root, repo } = makeRepo(t);
+  const res = await wt.createWorktree({ repo, baseBranch: 'main', name: 'Juni', agentId: 'zz9abc1', taken: new Set() });
+  git(repo, 'worktree', 'add', '-q', '-b', 'side', path.join(root, 'elsewhere'), 'main');
+  const list = await wt.listAgentWorktrees(repo);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].path.toLowerCase(), path.resolve(res.path).toLowerCase());
+  assert.equal(list[0].branch, res.branch);
+  assert.equal(wt.exists(res.path), true);
+  assert.equal(wt.exists(path.join(root, 'nope')), false);
+});
