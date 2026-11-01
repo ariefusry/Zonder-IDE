@@ -351,3 +351,59 @@ Mapping inside `decide`: `write: 'deny'` = today's READ_ONLY file branch; `'test
   - 9router agent with effort `low` (fake router): the request body logged by the fake has `reasoning_effort`.
   - Stop all with cleanup. 0 console errors, 0 leftover `claude` processes.
 - [ ] **Step 7: Commit** `feat: model versions and effort`.
+
+### Task 20: Living office
+
+**Spec:** `docs/superpowers/specs/2026-11-01-zonder-office-life-design.md` (amends §7 of the main design). Style reference: mockup B in `.superpowers/brainstorm/1761-1793518470/content/office-style.html` (front view; translate to the existing isometric projection).
+
+**Files:**
+- Create: `src/renderer/office/look.js`, `src/renderer/office/furniture.js`, `tests/office-look.test.js`
+- Modify: `src/renderer/office/office.js`, `src/renderer/office/characters.js`, `src/renderer/office/map.js` (layout only, if furniture moves), `src/renderer/styles.css`, `src/renderer/index.html` (script tags), `tests/office-map.test.js`
+
+**Interfaces:**
+- Consumes: `OfficeIso.project/depthKey`, `OfficeMap` (zones, seats, `STATUS_TO_ZONE`), `OfficeCharacters.sync/step`; character objects `{ id, status, x, y, path, seat, spot }`.
+- Produces (`look.js`, same IIFE + `module.exports` guard as `map.js`):
+  - `POSES = ['type', 'board', 'sip', 'raise', 'qa', 'lounge', 'facepalm', 'walk']`.
+  - `poseFor(status: string, { walking: boolean, seated: boolean }) -> { pose: POSES[n], standing: boolean, mark: 'dots' | 'alert' | 'check' | 'error' | null }`.
+  - `appearanceFor(agentId: string) -> { skin: string, hair: string, hairStyle: 0 | 1 | 2 }`: deterministic hash of the id into fixed palettes of at least 5 skins and 5 hair colours.
+  - `phase(tMs: number, periodMs: number, offset = 0) -> number` in `[0, 1)`.
+- `OfficeCharacters.avatarLook(status)` keeps returning `{ flag }` (existing tests stay).
+
+Status to pose (spec §4.1): working → `type`, mark null; thinking → `board`, `dots`; idle/starting → `sip`, null; approval → `raise`, `alert`; testing → `qa`, null (no tick or cross); done → `lounge`, `check`; error → `facepalm`, `error`. While a path is non-empty the pose is `walk` and the mark stays. With no seat (overflow tile), `standing: true` for every pose.
+
+- [ ] **Step 1: Write failing tests** in `tests/office-look.test.js`:
+  - `poseFor maps each status to the pose and mark in the table above`
+  - `poseFor('testing', …).mark is null` (no false pass/fail)
+  - `poseFor('approval', …).mark is 'alert' and differs from poseFor('error', …).mark`
+  - `poseFor(any, {walking:true}).pose is 'walk'; mark unchanged`
+  - `poseFor('working', {seated:false}).standing is true`
+  - `appearanceFor is stable for the same id and differs for at least 4 of 6 sample ids`
+  - `phase(0,1000)=0, phase(250,1000)=0.25, phase(1250,1000)=0.25, phase(0,1000,0.5)=0.5`
+- [ ] **Step 2: Run `npm test`.** Expected: new tests fail; existing office tests pass.
+- [ ] **Step 3: Implement `look.js`** to the interfaces above.
+- [ ] **Step 4: Tokens.** Add `--office-*` colour tokens to `styles.css` (wood light/dark, wall, floor, plant light/dark, whiteboard cream, mug, sofa, screen glow, orange accent), taken from mockup B. Office code reads them through the existing `token()` helper; no hex literals in office JS.
+- [ ] **Step 5: `furniture.js`.**
+  - One draw function per piece in spec §4.3: desk with monitor and keyboard, office chair, round meeting table and chairs, whiteboard with scribbles, QA station with two screens, sofa and side table, coffee bar with machine and cups, potted plant, bookshelf, window, wall clock.
+  - Pieces draw in iso space from `FURNITURE` entries.
+  - Rounded flat shapes, no gradients.
+  - Animated parts (screens, plant sway, clock hands, steam) are separate functions that take `t`.
+- [ ] **Step 6: `office.js` render loop.**
+  - The static room (floor, walls, non-animated furniture) renders once to an offscreen canvas and again only on resize.
+  - Each frame: blit the static layer, then the animated furniture parts, then avatars by depth.
+  - Frames are capped at 30 fps using `dt` in real time.
+  - The loop stops when `document.hidden` or when the canvas is not displayed (`canvas.offsetParent === null`, e.g. Settings open), and resumes on `visibilitychange` / display.
+- [ ] **Step 7: Avatars.**
+  - Draw each pose from `poseFor` in style B: round head, rounded body, status-colour shirt (`--st-*`), and skin/hair from `appearanceFor`.
+  - Walking swings arms and legs. Idle breath is 1 px; blinks every 3–6 s per agent, offset by id.
+  - Marks: three blinking dots, a pulsing yellow "!" (largest, so approval stands out most), a small green check, a red "!" with a red monitor.
+  - Standing variants apply on overflow tiles.
+  - Click-to-select and the name tag keep working.
+- [ ] **Step 8: Layout.** Move the whiteboard next to the meeting table so they read as one meeting room. If seats or furniture move, update `map.js` and keep `tests/office-map.test.js` passing: every seat reachable from the door, no seat on a blocked tile.
+- [ ] **Step 9: Run `npm test`.** Expected: all pass.
+- [ ] **Step 10: CDP check** (mock data `ZONDER_MOCK` or fake agents, then one real Claude agent in a scratch repo):
+  - Screenshot each status pose: working, thinking, idle, approval, testing, done, error.
+  - Screenshot an overflow agent (fill one zone) and a walking avatar mid-path.
+  - Measure renderer CPU with 3 idle agents for 30 s: the average is below 5% (`process.getCPUUsage` from the renderer, or Task Manager numbers in the report).
+  - Open Settings: no rAF callbacks for 2 s (counter via CDP). Close it: the animation resumes.
+  - Clicking an avatar selects its chat tab. 0 console errors.
+- [ ] **Step 11: Commit** `feat: living office`.
