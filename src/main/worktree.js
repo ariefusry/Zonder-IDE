@@ -8,11 +8,15 @@ const path = require('node:path');
 const RESERVED = new Set(['con', 'prn', 'aux', 'nul', ...[1, 2, 3, 4, 5, 6, 7, 8, 9].flatMap((n) => [`com${n}`, `lpt${n}`])]);
 const SLUG_MAX = 32;
 
-function git(cwd, args) {
+const MAX_DIFF = 200 * 1024;
+
+// okCodes: exit codes that still mean success (diff --no-index exits 1 when the
+// files differ). raw: keep stdout untrimmed, for NUL-separated names.
+function git(cwd, args, { okCodes = [], raw = false } = {}) {
   return new Promise((resolve, reject) => {
-    execFile('git', args, { cwd, windowsHide: true, encoding: 'utf8' }, (err, stdout, stderr) => {
-      if (err) reject(new Error(`git ${args[0]} failed: ${(stderr || err.message).trim()}`));
-      else resolve(stdout.trim());
+    execFile('git', args, { cwd, windowsHide: true, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err && !okCodes.includes(err.code)) reject(new Error(`git ${args[0]} failed: ${(stderr || err.message).trim()}`));
+      else resolve(raw ? stdout : stdout.trim());
     });
   });
 }
@@ -118,4 +122,53 @@ async function listAgentWorktrees(repo) {
   return out;
 }
 
-module.exports = { isGitRepo, listBranches, currentBranch, makeSlug, createWorktree, removeWorktree, isDirty, exists, listAgentWorktrees };
+// `git diff --name-status -z -M` output -> [{path, status, oldPath?}]. Type
+// changes count as edits and copies as new files.
+function parseNameStatus(text) {
+  const parts = text.split('\0');
+  const out = [];
+  for (let i = 0; i < parts.length && parts[i]; ) {
+    const code = parts[i][0];
+    if (code === 'R' || code === 'C') {
+      const [oldPath, file] = [parts[i + 1], parts[i + 2]];
+      out.push(code === 'R' ? { path: file, status: 'R', oldPath } : { path: file, status: 'A' });
+      i += 3;
+    } else {
+      out.push({ path: parts[i + 1], status: code === 'T' ? 'M' : code });
+      i += 2;
+    }
+  }
+  return out;
+}
+
+// Diff flags that keep output plain whatever the user's git config says.
+const DIFF = ['-c', 'core.quotepath=false', 'diff', '--no-color', '--no-ext-diff'];
+
+// Everything the agent changed since it branched off: commits, uncommitted
+// edits and untracked files, against the merge-base with its base branch.
+async function listChanges(wtPath, baseBranch) {
+  const base = await git(wtPath, ['merge-base', baseBranch, 'HEAD']);
+  const tracked = parseNameStatus(await git(wtPath, ['diff', '--no-color', '--name-status', '-z', '-M', base], { raw: true }));
+  const untracked = (await git(wtPath, ['ls-files', '--others', '--exclude-standard', '-z'], { raw: true }))
+    .split('\0')
+    .filter(Boolean)
+    .map((p) => ({ path: p, status: 'A' }));
+  const files = [...tracked, ...untracked].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  return { base, files };
+}
+
+// Read-only diff of one changed file. oldPath shows a rename as one diff.
+async function fileDiff(wtPath, base, file, oldPath) {
+  const untracked = (await git(wtPath, ['ls-files', '--others', '--exclude-standard', '-z', '--', file], { raw: true })) !== '';
+  const text = untracked
+    ? await git(wtPath, [...DIFF, '--no-index', '--', '/dev/null', file], { okCodes: [1], raw: true })
+    : await git(wtPath, [...DIFF, '-M', base, '--', ...(oldPath ? [oldPath] : []), file], { raw: true });
+  if (/^Binary files .* differ$/m.test(text)) return { path: file, text: '', truncated: false, binary: true };
+  const bytes = Buffer.from(text, 'utf8');
+  if (bytes.length <= MAX_DIFF) return { path: file, text, truncated: false, binary: false };
+  // Cut on a line end so no line or multi-byte character is split.
+  const cut = bytes.subarray(0, MAX_DIFF).lastIndexOf(0x0a);
+  return { path: file, text: bytes.subarray(0, cut + 1).toString('utf8'), truncated: true, binary: false };
+}
+
+module.exports = { isGitRepo, listBranches, currentBranch, makeSlug, createWorktree, removeWorktree, isDirty, exists, listAgentWorktrees, parseNameStatus, listChanges, fileDiff, MAX_DIFF };

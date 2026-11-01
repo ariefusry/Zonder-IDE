@@ -156,3 +156,92 @@ test('listAgentWorktrees lists only worktrees under .zonder-worktrees, with thei
   assert.equal(wt.exists(res.path), true);
   assert.equal(wt.exists(path.join(root, 'nope')), false);
 });
+
+// Changes panel (layout Task 24): what an agent changed against its base branch.
+
+test('parseNameStatus handles M, A, D, R100 with oldPath, a path with spaces, and a non-ASCII name', () => {
+  const out = wt.parseNameStatus('M\0a.txt\0A\0dir/b c.txt\0D\0gone.txt\0R100\0old.txt\0new.txt\0M\0kopi ü.txt\0T\0link\0C075\0src.txt\0copy.txt\0');
+  assert.deepEqual(out, [
+    { path: 'a.txt', status: 'M' },
+    { path: 'dir/b c.txt', status: 'A' },
+    { path: 'gone.txt', status: 'D' },
+    { path: 'new.txt', status: 'R', oldPath: 'old.txt' },
+    { path: 'kopi ü.txt', status: 'M' },
+    { path: 'link', status: 'M' },
+    { path: 'copy.txt', status: 'A' },
+  ]);
+  assert.deepEqual(wt.parseNameStatus(''), []);
+});
+
+// Repo with tracked files on main and an agent worktree on its own branch.
+async function changesRepo(t, baseBranch = 'main') {
+  const { root, repo } = makeRepo(t);
+  const lines = Array.from({ length: 20 }, (_, i) => `baris ${i}`).join('\n') + '\n';
+  for (const f of ['a.txt', 'del.txt', 'same.txt', 'old.txt']) fs.writeFileSync(path.join(repo, f), `${f}\n${lines}`);
+  fs.writeFileSync(path.join(repo, '.gitignore'), '*.log\n');
+  git(repo, 'add', '.');
+  git(repo, 'commit', '-q', '-m', 'files');
+  if (baseBranch !== 'main') git(repo, 'branch', baseBranch);
+  const tree = await wt.createWorktree({ repo, baseBranch, name: 'Raka', agentId: 'agent01', taken: new Set() });
+  return { root, repo, wt: tree.path };
+}
+
+test('listChanges counts a committed edit, an uncommitted edit, a deleted file, a rename, and an untracked file; ignored files and unchanged files are absent', async (t) => {
+  const { wt: w } = await changesRepo(t);
+  fs.appendFileSync(path.join(w, 'a.txt'), 'commit\n');
+  git(w, 'commit', '-q', '-am', 'edit a');
+  git(w, 'mv', 'old.txt', 'new name.txt');
+  git(w, 'commit', '-q', '-m', 'rename');
+  fs.appendFileSync(path.join(w, 'README.md'), 'belum commit\n');
+  fs.rmSync(path.join(w, 'del.txt'));
+  fs.writeFileSync(path.join(w, 'baru ü.txt'), 'x\n');
+  fs.writeFileSync(path.join(w, 'debug.log'), 'abaikan\n');
+  const r = await wt.listChanges(w, 'main');
+  assert.match(r.base, /^[0-9a-f]{40}$/);
+  assert.deepEqual(r.files, [
+    { path: 'README.md', status: 'M' },
+    { path: 'a.txt', status: 'M' },
+    { path: 'baru ü.txt', status: 'A' },
+    { path: 'del.txt', status: 'D' },
+    { path: 'new name.txt', status: 'R', oldPath: 'old.txt' },
+  ]);
+});
+
+test('listChanges with no changes -> files []', async (t) => {
+  const { wt: w } = await changesRepo(t);
+  assert.deepEqual((await wt.listChanges(w, 'main')).files, []);
+});
+
+test('listChanges after the base branch is deleted -> throws with git\'s message', async (t) => {
+  const { repo, wt: w } = await changesRepo(t, 'dev');
+  git(repo, 'branch', '-D', 'dev');
+  await assert.rejects(wt.listChanges(w, 'dev'), /git merge-base failed: .+/);
+});
+
+test('fileDiff of an untracked file shows every line with +; of a binary -> binary true, text \'\'; of a 300 KB change -> truncated true, text <= 200 KB', async (t) => {
+  const { wt: w } = await changesRepo(t);
+  fs.writeFileSync(path.join(w, 'n ü.txt'), 'satu\ndua\n');
+  fs.writeFileSync(path.join(w, 'b.bin'), Buffer.from([0, 1, 2, 0, 255, 0]));
+  fs.writeFileSync(path.join(w, 'big.txt'), 'x'.repeat(99) + '\n'.repeat(1) + Array.from({ length: 3000 }, (_, i) => `${i} ${'y'.repeat(95)}`).join('\n') + '\n');
+  fs.appendFileSync(path.join(w, 'a.txt'), 'tambah\n');
+  const { base } = await wt.listChanges(w, 'main');
+
+  const u = await wt.fileDiff(w, base, 'n ü.txt');
+  assert.equal(u.path, 'n ü.txt');
+  assert.equal(u.binary, false);
+  assert.equal(u.truncated, false);
+  const body = u.text.split('\n').slice(u.text.split('\n').findIndex((l) => l.startsWith('@@')) + 1).filter(Boolean);
+  assert.deepEqual(body, ['+satu', '+dua']);
+
+  const m = await wt.fileDiff(w, base, 'a.txt');
+  assert.match(m.text, /^\+tambah$/m);
+
+  const b = await wt.fileDiff(w, base, 'b.bin');
+  assert.deepEqual([b.binary, b.text], [true, '']);
+
+  const big = await wt.fileDiff(w, base, 'big.txt');
+  assert.equal(big.truncated, true);
+  assert.ok(Buffer.byteLength(big.text) <= wt.MAX_DIFF, 'within 200 KB');
+  assert.ok(Buffer.byteLength(big.text) > 100 * 1024, 'keeps most of it');
+  assert.equal(wt.MAX_DIFF, 200 * 1024);
+});

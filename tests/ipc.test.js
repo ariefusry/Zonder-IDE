@@ -137,3 +137,94 @@ test('setEffort validates agent id and value, and reaches the running agent', as
   await assert.rejects(async () => call(CHANNELS.setEffort, 'agent01'), /arguments/);
   assert.equal(calls.length, 2);
 });
+
+// Changes panel channels (layout Task 24).
+function changesSetup({ exists = true } = {}) {
+  const handlers = {};
+  const store = new AgentStore();
+  store.add({ id: 'agent01', name: 'Raka', status: 'idle', worktreePath: 'C:\\wt\\agent01', baseBranch: 'main' });
+  store.add({ id: 'sample1', name: 'Contoh', status: 'idle', sample: true });
+  store.add({ id: 'agent02', name: 'Sari', status: 'idle', worktreePath: 'C:\\gagal', baseBranch: 'main' });
+  const calls = [];
+  const opened = [];
+  const worktree = {
+    exists: () => exists,
+    listChanges: async (p, b) => {
+      calls.push(['listChanges', p, b]);
+      return { base: 'abc', files: [{ path: 'src/a.js', status: 'M' }, { path: 'b c.txt', status: 'R', oldPath: 'old.txt' }] };
+    },
+    fileDiff: async (...a) => {
+      calls.push(['fileDiff', ...a]);
+      return { path: a[2], text: '+x', truncated: false, binary: false };
+    },
+  };
+  const openPath = async (p) => {
+    opened.push(p);
+    return p.includes('gagal') ? 'Tidak bisa dibuka' : '';
+  };
+  registerIpc({ ipcMain: { handle: (ch, fn) => { handlers[ch] = fn; } }, store, getWindow: () => null, worktree, openPath });
+  const call = (ch, ...args) => handlers[ch]({}, ...args);
+  return { call, calls, opened, store };
+}
+
+test('listChanges and fileDiff run in the agent worktree against its base', async () => {
+  const s = changesSetup();
+  const r = await s.call(CHANNELS.listChanges, 'agent01');
+  assert.equal(r.files.length, 2);
+  await s.call(CHANNELS.fileDiff, 'agent01', 'src/a.js');
+  await s.call(CHANNELS.fileDiff, 'agent01', 'b c.txt');
+  assert.deepEqual(s.calls, [
+    ['listChanges', 'C:\\wt\\agent01', 'main'],
+    ['fileDiff', 'C:\\wt\\agent01', 'abc', 'src/a.js', undefined],
+    ['fileDiff', 'C:\\wt\\agent01', 'abc', 'b c.txt', 'old.txt'],
+  ]);
+});
+
+test('fileDiff for a path not in the last listChanges (\'../x\', \'C:\\\\x\', a real file the agent did not change) -> rejects with "File ini tidak ada di daftar perubahan."', async () => {
+  const s = changesSetup();
+  await assert.rejects(async () => s.call(CHANNELS.fileDiff, 'agent01', 'src/a.js'), /File ini tidak ada di daftar perubahan\./, 'before any listChanges');
+  await s.call(CHANNELS.listChanges, 'agent01');
+  for (const bad of ['../x', 'C:\\x', 'README.md', 'old.txt', '', 42, null]) {
+    await assert.rejects(async () => s.call(CHANNELS.fileDiff, 'agent01', bad), /File ini tidak ada di daftar perubahan\./, String(bad));
+  }
+  await assert.rejects(async () => s.call(CHANNELS.fileDiff, 'agent01'), /arguments/);
+  await assert.rejects(async () => s.call(CHANNELS.fileDiff, 'sample1', 'src/a.js'), /contoh/);
+  assert.equal(s.calls.filter((c) => c[0] === 'fileDiff').length, 0);
+});
+
+test('listChanges on a removed worktree -> "Worktree agent ini sudah tidak ada."', async () => {
+  const s = changesSetup({ exists: false });
+  await assert.rejects(async () => s.call(CHANNELS.listChanges, 'agent01'), /^Error: Worktree agent ini sudah tidak ada\.$/);
+  await assert.rejects(async () => s.call(CHANNELS.openWorktree, 'agent01'), /Worktree agent ini sudah tidak ada\./);
+  await assert.rejects(async () => s.call(CHANNELS.listChanges, '../x'), /agentId/);
+  await assert.rejects(async () => s.call(CHANNELS.listChanges, 'sample1'), /contoh/);
+});
+
+test('openWorktree opens the agent worktree folder and reports a failure', async () => {
+  const s = changesSetup();
+  await s.call(CHANNELS.openWorktree, 'agent01');
+  assert.deepEqual(s.opened, ['C:\\wt\\agent01']);
+  await assert.rejects(async () => s.call(CHANNELS.openWorktree, 'agent02'), /Tidak bisa dibuka/);
+});
+
+test('preload exposes listChanges, fileDiff, openWorktree', () => {
+  const Module = require('node:module');
+  let api = null;
+  const invoked = [];
+  const fake = {
+    contextBridge: { exposeInMainWorld: (_name, obj) => { api = obj; } },
+    ipcRenderer: { invoke: (...a) => invoked.push(a), on() {}, removeListener() {} },
+  };
+  const load = Module._load;
+  Module._load = function (req, ...rest) { return req === 'electron' ? fake : load.call(this, req, ...rest); };
+  try {
+    delete require.cache[require.resolve('../src/preload/preload.js')];
+    require('../src/preload/preload.js');
+  } finally {
+    Module._load = load;
+  }
+  api.listChanges('agent01');
+  api.fileDiff('agent01', 'a.txt');
+  api.openWorktree('agent01');
+  assert.deepEqual(invoked, [[CHANNELS.listChanges, 'agent01'], [CHANNELS.fileDiff, 'agent01', 'a.txt'], [CHANNELS.openWorktree, 'agent01']]);
+});

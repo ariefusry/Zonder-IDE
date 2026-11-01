@@ -37,6 +37,9 @@ const CHANNELS = {
   getSettings: 'zonder:getSettings',
   updateSettings: 'zonder:updateSettings',
   pickDefaultRepo: 'zonder:pickDefaultRepo',
+  listChanges: 'zonder:listChanges',
+  fileDiff: 'zonder:fileDiff',
+  openWorktree: 'zonder:openWorktree',
 };
 
 const AGENT_ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -95,6 +98,7 @@ function registerIpc({
   listSkills = require('./skills.js').listSkills,
   // Defaults in memory when main.js does not pass the settings.json store.
   settings = require('./settings.js').createSettings(),
+  openPath = (p) => require('electron').shell.openPath(p),
 }) {
   // Only folders the owner picked in the native dialog may become a workspace:
   // the path is the policy's "main checkout", so the renderer cannot supply it.
@@ -342,6 +346,40 @@ function registerIpc({
     expectArgs(args, 1);
     const rec = ownAgent(args[0]);
     return { dirty: await worktree.isDirty(rec.worktreePath), branch: rec.branch, path: rec.worktreePath };
+  });
+
+  // The Perubahan panel. fileDiff only serves paths from the agent's last
+  // listChanges, so the renderer cannot name an arbitrary file.
+  const lastChanges = new Map();
+  const liveWorktree = (agentId) => {
+    const rec = ownAgent(agentId);
+    if (!worktree.exists(rec.worktreePath)) throw new Error('Worktree agent ini sudah tidak ada.');
+    return rec;
+  };
+
+  ipcMain.handle(CHANNELS.listChanges, async (_e, ...args) => {
+    expectArgs(args, 1);
+    const rec = liveWorktree(args[0]);
+    const result = await worktree.listChanges(rec.worktreePath, rec.baseBranch);
+    lastChanges.set(rec.id, result);
+    return result;
+  });
+
+  ipcMain.handle(CHANNELS.fileDiff, async (_e, ...args) => {
+    expectArgs(args, 2);
+    const rec = ownAgent(args[0]);
+    const last = lastChanges.get(rec.id);
+    const entry = last?.files.find((f) => f.path === args[1]);
+    if (!entry) throw new Error('File ini tidak ada di daftar perubahan.');
+    liveWorktree(rec.id);
+    return worktree.fileDiff(rec.worktreePath, last.base, entry.path, entry.oldPath);
+  });
+
+  ipcMain.handle(CHANNELS.openWorktree, async (_e, ...args) => {
+    expectArgs(args, 1);
+    const rec = liveWorktree(args[0]);
+    const err = await openPath(rec.worktreePath);
+    if (err) throw new Error(err);
   });
 
   ipcMain.handle(CHANNELS.resumeAgent, async (_e, ...args) => {
