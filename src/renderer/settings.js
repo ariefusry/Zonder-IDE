@@ -147,6 +147,18 @@ function initSettings() {
     else rolesUi.skills.delete(box.value);
     renderRoleSkillCount();
   });
+  // "Semua skill" and "Matikan semua skill" cannot both hold.
+  setField('roleAllSkills').addEventListener('change', (e) => {
+    rolesUi.allSkills = e.target.checked;
+    if (rolesUi.allSkills) setField('roleNoSkills').checked = false;
+    renderRoleSkills();
+  });
+  setField('roleNoSkills').addEventListener('change', (e) => {
+    if (!e.target.checked || !rolesUi.allSkills) return;
+    rolesUi.allSkills = false;
+    setField('roleAllSkills').checked = false;
+    renderRoleSkills();
+  });
 
   const url = setField('rkUrl');
   const input = setField('rkKey');
@@ -183,7 +195,7 @@ function initSettings() {
 
 // Roles pane (settings spec §4.3). Main validates and stores; this pane only
 // edits one role at a time. A new role exists only once it is saved.
-const rolesUi = { skills: new Set(), list: null, error: null, loading: false, current: null, isNew: false, dirty: false, pendingSwitch: null, confirm: null, busy: false };
+const rolesUi = { skills: new Set(), allSkills: false, list: null, error: null, loading: false, current: null, isNew: false, dirty: false, pendingSwitch: null, confirm: null, busy: false };
 
 function setRoleNames(list) {
   state.roleNames = new Set(list.map((r) => r.name));
@@ -269,7 +281,10 @@ function fillRoleForm(role) {
   setField('rolePersona').value = role.persona;
   setField('roleWrite').value = role.write;
   setField('roleShell').value = role.shell;
+  // skills null = every skill; the picks underneath start empty.
+  rolesUi.allSkills = role.skills === null;
   rolesUi.skills = new Set(role.skills ?? []);
+  setField('roleAllSkills').checked = rolesUi.allSkills;
   setField('roleNoSkills').checked = Boolean(role.disableSkills);
   setField('roleSkillFilter').value = '';
   renderRoleSkills();
@@ -342,7 +357,7 @@ function initRolesPane() {
       persona: setField('rolePersona').value,
       write: setField('roleWrite').value,
       shell: setField('roleShell').value,
-      skills: [...rolesUi.skills],
+      skills: rolesUi.allSkills ? null : [...rolesUi.skills],
       disableSkills: setField('roleNoSkills').checked,
     };
     // Renaming a custom role saves it under the new name, then removes the old one.
@@ -436,7 +451,7 @@ function renderSkillsPane() {
 
 function renderRoleSkillCount() {
   const n = rolesUi.skills.size;
-  setField('roleSkillCount').textContent = n ? `${n} dipilih` : 'belum ada yang dipilih';
+  setField('roleSkillCount').textContent = rolesUi.allSkills ? 'semua skill (agent Claude)' : n ? `${n} dipilih` : 'belum ada yang dipilih';
 }
 
 function renderRoleSkills() {
@@ -455,7 +470,7 @@ function renderRoleSkills() {
     box.append(el('div', { class: 'skill-group' }, sourceLabel(source)));
     for (const s of items) {
       box.append(el('label', { class: 'skill-check' },
-        el('input', { type: 'checkbox', value: s.id, checked: rolesUi.skills.has(s.id) ? '' : null }),
+        el('input', { type: 'checkbox', value: s.id, checked: rolesUi.skills.has(s.id) ? '' : null, disabled: rolesUi.allSkills ? '' : null }),
         el('span', {}, el('b', {}, s.name), el('small', {}, s.description || 'Tanpa deskripsi.'))));
     }
   }

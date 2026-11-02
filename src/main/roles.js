@@ -25,7 +25,7 @@ const BUILTIN_NAMES = BUILTIN.map((r) => r.name);
 
 function builtinDefault(name) {
   const b = BUILTIN.find((r) => r.name === name);
-  return { name, builtin: true, persona: PERSONAS[name] ?? '', write: b.write, shell: b.shell, skills: [], disableSkills: false };
+  return { name, builtin: true, persona: PERSONAS[name] ?? '', write: b.write, shell: b.shell, skills: null, disableSkills: false };
 }
 
 const sameName = (a, b) => a.toLowerCase() === b.toLowerCase();
@@ -35,6 +35,8 @@ function clean(role) {
   if (typeof role.persona !== 'string' || role.persona.length > MAX_PERSONA) throw new Error(`Persona harus teks, paling banyak ${MAX_PERSONA} karakter.`);
   if (!WRITE.includes(role.write)) throw new Error('Izin tulis tidak dikenal.');
   if (!SHELL.includes(role.shell)) throw new Error('Izin shell tidak dikenal.');
+  // null = every skill: Claude agents block none; 9router agents still load only picked ones.
+  if (role.skills === null) return { persona: role.persona, write: role.write, shell: role.shell, skills: null, disableSkills: Boolean(role.disableSkills) };
   const skills = role.skills ?? [];
   if (!Array.isArray(skills) || skills.length > MAX_SKILLS || !skills.every((s) => typeof s === 'string' && s.length > 0 && s.length <= 200)) throw new Error('Skill harus daftar nama skill.');
   return { persona: role.persona, write: role.write, shell: role.shell, skills: [...new Set(skills)], disableSkills: Boolean(role.disableSkills) };
@@ -53,7 +55,13 @@ function createRoles({ dir = null } = {}) {
       const raw = JSON.parse(text.replace(/^\uFEFF/, ''));
       // Anything unusable is dropped; the built-ins always remain.
       for (const [name, fields] of Object.entries(raw?.edits ?? {})) {
-        if (BUILTIN_NAMES.includes(name)) try { data.edits[name] = clean(fields); } catch {}
+        if (!BUILTIN_NAMES.includes(name)) continue;
+        try {
+          const f = clean(fields);
+          // Files from before version 2 saved [] for "never picked"; built-ins now mean every skill.
+          if (!raw.version && Array.isArray(f.skills) && !f.skills.length) f.skills = null;
+          data.edits[name] = f;
+        } catch {}
       }
       for (const r of Array.isArray(raw?.custom) ? raw.custom : []) {
         try {
@@ -74,7 +82,7 @@ function createRoles({ dir = null } = {}) {
     if (file) {
       fs.mkdirSync(dir, { recursive: true });
       const tmp = `${file}.tmp-${process.pid}`;
-      fs.writeFileSync(tmp, JSON.stringify(next, null, 2));
+      fs.writeFileSync(tmp, JSON.stringify({ version: 2, ...next }, null, 2));
       fs.renameSync(tmp, file);
     }
     data = next;
@@ -82,7 +90,7 @@ function createRoles({ dir = null } = {}) {
 
   function list() {
     const builtins = BUILTIN_NAMES.map((name) => ({ ...builtinDefault(name), ...data.edits[name] }));
-    return [...builtins, ...data.custom.map((r) => ({ ...r, skills: [...r.skills] }))];
+    return [...builtins, ...data.custom.map((r) => ({ ...r, skills: r.skills ? [...r.skills] : null }))];
   }
 
   function get(name) {
@@ -131,7 +139,7 @@ function createRoles({ dir = null } = {}) {
 // What goes on the agent record at spawn: decide() and the agent read this copy,
 // so editing or deleting the role later does not change a running agent.
 function snapshot(role) {
-  return { name: role.name, write: role.write, shell: role.shell, skills: [...role.skills], disableSkills: role.disableSkills };
+  return { name: role.name, write: role.write, shell: role.shell, skills: role.skills ? [...role.skills] : null, disableSkills: role.disableSkills };
 }
 
 // Resume after a relaunch uses the role as it is now (settings spec §4.3); a

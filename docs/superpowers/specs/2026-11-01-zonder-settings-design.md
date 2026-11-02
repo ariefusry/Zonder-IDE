@@ -69,6 +69,7 @@ Pemilik belum mencoba banyak dari ini langsung, jadi versi pertama memakai defau
 ### 4.4 Skills
 - Halaman Skills menampilkan semua skill yang ditemukan: dari `~/.claude/skills` dan dari plugin yang terpasang. Per skill: nama, deskripsi, sumber.
 - Skill dipilih **per peran** (di editor peran), bukan per agent.
+- **Semua skill aktif** (perubahan 2026-11-02, pilihan pemilik): peran bawaan memakai pilihan ini secara default. Agent Claude memuat semua skill; agent 9router tidak memuat skill sampai skill dicentang satu per satu, agar prompt tidak memuat ratusan deskripsi skill. Peran baru tetap tanpa skill.
 - **Agent 9router:** mendapat tool `load_skill`. Prompt sistem memuat daftar nama + deskripsi skill perannya; isi skill dimuat saat agent memanggil tool itu. Membaca file skill dilakukan proses utama dan dibatasi ke skill yang dipilih untuk peran itu.
 - `load_skill` menerima nama skill dan path relatif opsional di dalam folder skill itu (default `SKILL.md`), sehingga agent bisa membaca file pendukung seperti `references/*.md` atau template. Hanya baca. Path divalidasi ketat (traversal, symlink, huruf drive, UNC) agar tidak keluar dari folder skill, dengan tes tabel sendiri. File kredensial tetap diblokir.
 - Script di folder skill tidak bisa dijalankan: blokir shell "di luar worktree" tetap berlaku.

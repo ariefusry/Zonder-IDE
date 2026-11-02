@@ -543,6 +543,8 @@ test('buildArgs blocks every known skill the role did not pick', () => {
   const i = args.indexOf('--disallowedTools');
   assert.ok(i > 0);
   assert.deepEqual(args.slice(i + 1, i + 3), ['Skill(kit:deck)', 'Skill(graph)']);
+  // skills null (every skill) blocks nothing.
+  assert.ok(!buildArgs({ model: 'haiku', rolePolicy: { skills: null, disableSkills: false } }, skills).includes('--disallowedTools'));
   // A record from before roles had skills keeps every skill, as before.
   assert.ok(!buildArgs({ model: 'haiku' }, skills).includes('--disallowedTools'));
   // Every skill picked: nothing to block.

@@ -227,10 +227,11 @@
             </div>
             <fieldset class="role-skills" id="roleSkills">
               <legend>Skill <span class="hint" id="roleSkillCount"></span></legend>
+              <label class="skill-off"><input type="checkbox" id="roleAllSkills"> Semua skill aktif (agent Claude)</label>
               <input type="search" id="roleSkillFilter" placeholder="Cari skill" aria-label="Cari skill" autocomplete="off" spellcheck="false">
               <div class="skill-checks" id="roleSkillChecks"></div>
               <label class="skill-off"><input type="checkbox" id="roleNoSkills"> Matikan semua skill (agent Claude)</label>
-              <span class="hint">Agent 9router memuat skill yang dicentang lewat tool load_skill. Agent Claude memakai skill yang dicentang dan skill lain diblokir; skill di folder .claude milik repo tidak terdaftar di sini dan tetap aktif.</span>
+              <span class="hint">Semua skill aktif: agent Claude memuat semua skill, agent 9router tidak memuat skill (centang skill satu per satu untuk 9router). Tanpa pilihan itu, agent 9router memuat skill yang dicentang lewat tool load_skill, dan agent Claude memakai skill yang dicentang sementara skill lain diblokir; skill di folder .claude milik repo tidak terdaftar di sini dan tetap aktif.</span>
             </fieldset>
             <p class="role-note">Selalu berlaku untuk semua peran: file kredensial, checkout utama, dan apa pun di luar worktree agent diblokir, begitu juga force push dan menulis ulang riwayat Git. Pasang paket, git push, dan hapus selalu bertanya.</p>
             <p class="form-error" id="roleError" role="alert" hidden></p>

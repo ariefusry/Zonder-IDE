@@ -27,7 +27,8 @@ test('list() on an empty dir returns the six built-ins in table order with the P
   ]);
   for (const r of roles) {
     assert.equal(r.persona, PERSONAS[r.name]);
-    assert.deepEqual(r.skills, []);
+    // null = every skill (owner's choice, 2026-11-02): Claude agents block none.
+    assert.equal(r.skills, null);
     assert.equal(r.disableSkills, false);
   }
 });
@@ -102,7 +103,7 @@ test('without a dir the store works in memory', () => {
 
 test('snapshot keeps only what decide and the agent need', () => {
   const roles = createRoles();
-  assert.deepEqual(snapshot(roles.get('QA Engineer')), { name: 'QA Engineer', write: 'tests', shell: 'auto', skills: [], disableSkills: false });
+  assert.deepEqual(snapshot(roles.get('QA Engineer')), { name: 'QA Engineer', write: 'tests', shell: 'auto', skills: null, disableSkills: false });
 });
 
 test('policyForResume: current role, deleted custom role, and an old record without a policy', () => {
@@ -134,6 +135,50 @@ test('an unreadable roles.json is kept as roles.json.bad before anything overwri
     const roles = createRoles({ dir });
     roles.save({ ...designer, isNew: true });
     assert.equal(fs.readFileSync(path.join(dir, 'roles.json.bad'), 'utf8'), '{ "custom": [ broken');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('skills null (every skill) saves and loads for built-in and custom roles; a picked list stays a list', () => {
+  const dir = tmp();
+  try {
+    const roles = createRoles({ dir });
+    roles.save({ ...roles.get('Senior Developer'), persona: 'Persona baru.', skills: null });
+    roles.save({ ...designer, skills: null });
+    roles.save({ ...roles.get('Reviewer'), skills: ['user:ui'] });
+    const again = createRoles({ dir });
+    assert.equal(again.get('Senior Developer').skills, null);
+    assert.equal(again.get('Designer').skills, null);
+    assert.deepEqual(again.get('Reviewer').skills, ['user:ui']);
+    assert.equal(snapshot(again.get('Designer')).skills, null);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a built-in edit stored before the change with skills [] loads as every skill; custom [] stays none', () => {
+  const dir = tmp();
+  try {
+    fs.writeFileSync(file(dir), JSON.stringify({ edits: { 'Junior Developer': { persona: 'P.', write: 'ask', shell: 'ask', skills: [], disableSkills: false } }, custom: [designer] }));
+    const roles = createRoles({ dir });
+    assert.equal(roles.get('Junior Developer').skills, null);
+    assert.deepEqual(roles.get('Designer').skills, []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('resume of a built-in role agent gets every skill', () => {
+  assert.equal(policyForResume({ role: 'Senior Developer' }, createRoles()).rolePolicy.skills, null);
+});
+
+test('after the change, a built-in saved with no skills picked stays none', () => {
+  const dir = tmp();
+  try {
+    const roles = createRoles({ dir });
+    roles.save({ ...roles.get('Reviewer'), skills: [] });
+    assert.deepEqual(createRoles({ dir }).get('Reviewer').skills, []);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
