@@ -200,6 +200,7 @@ class RouterAgent {
         this.toolList = skills.length ? this.tools.toolsFor(this.record.rolePolicy) : this.tools.TOOLS;
         let reply = '';
         let calls = null;
+        let reported = false;
         for await (const part of streamChat({
           baseUrl: this.baseUrl(), key, model: this.record.model, effort: this.record.effort ?? null, fetch: this.fetch, signal: ctrl.signal,
           messages: [{ role: 'system', content: systemPrompt(this.record, skills) }, ...this.messages],
@@ -210,10 +211,18 @@ class RouterAgent {
             this.emitEvent({ type: 'delta', text: part.delta });
           }
           if (part.toolCalls) calls = part.toolCalls;
-          if (part.servedModel && part.servedModel !== this.record.servedModel) {
-            this.record.servedModel = part.servedModel;
-            this.emitEvent({ type: 'servedModel', model: part.servedModel });
+          if (part.servedModel) {
+            reported = true;
+            if (part.servedModel !== this.record.servedModel) {
+              this.record.servedModel = part.servedModel;
+              this.emitEvent({ type: 'servedModel', model: part.servedModel });
+            }
           }
+        }
+        // An answer that names no model leaves the logo unknown, not the last one.
+        if (!reported && this.record.servedModel) {
+          this.record.servedModel = null;
+          this.emitEvent({ type: 'servedModel', model: null });
         }
         if (reply) this.emitEvent({ type: 'message', role: 'agent', text: reply });
 

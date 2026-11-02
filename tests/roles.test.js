@@ -116,3 +116,25 @@ test('policyForResume: current role, deleted custom role, and an old record with
   assert.deepEqual(policyForResume({ role: 'Junior Developer' }, roles), { rolePolicy: snapshot(roles.get('Junior Developer')), roleDeleted: false });
   assert.equal(policyForResume({ role: 'Hilang' }, roles).roleDeleted, true);
 });
+
+test('a roles.json saved with a UTF-8 BOM still loads its custom roles', () => {
+  const dir = tmp();
+  try {
+    fs.writeFileSync(file(dir), '﻿' + JSON.stringify({ edits: {}, custom: [designer] }));
+    assert.ok(createRoles({ dir }).get('Designer'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an unreadable roles.json is kept as roles.json.bad before anything overwrites it', () => {
+  const dir = tmp();
+  try {
+    fs.writeFileSync(file(dir), '{ "custom": [ broken');
+    const roles = createRoles({ dir });
+    roles.save({ ...designer, isNew: true });
+    assert.equal(fs.readFileSync(path.join(dir, 'roles.json.bad'), 'utf8'), '{ "custom": [ broken');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

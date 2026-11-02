@@ -75,7 +75,8 @@ const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 function merge(base, patch, rules, strict, where = '') {
   const out = { ...base };
   for (const [k, v] of Object.entries(patch)) {
-    const rule = rules[k];
+    // Own keys only: "constructor" or "toString" must not find a prototype function.
+    const rule = Object.hasOwn(rules, k) ? rules[k] : null;
     const name = where ? `${where}.${k}` : k;
     if (!rule) {
       if (strict) throw new Error(`Pengaturan tidak dikenal: ${name}`);
@@ -102,7 +103,8 @@ function createSettings({ dir = null } = {}) {
 
   if (file) {
     try {
-      const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+      // Notepad and some editors save a BOM, which JSON.parse refuses.
+      const raw = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
       if (isObject(raw)) data = merge(data, raw, RULES, false);
     } catch {
       data = copy(DEFAULTS);

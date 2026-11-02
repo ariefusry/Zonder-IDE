@@ -115,3 +115,26 @@ test('a stored or sent alias (opus, sonnet, haiku) becomes its versioned id', ()
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('keys inherited from Object.prototype are unknown settings, not rules', () => {
+  const dir = tmp();
+  try {
+    const s = createSettings({ dir });
+    assert.throws(() => s.update({ constructor: { a: 1 } }), /tidak dikenal/);
+    assert.throws(() => s.update({ toString: 5 }), /tidak dikenal/);
+    assert.throws(() => s.update({ agent: { hasOwnProperty: 1 } }), /tidak dikenal/);
+    assert.deepEqual(s.get(), DEFAULTS);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a settings.json saved with a UTF-8 BOM still loads', () => {
+  const dir = tmp();
+  try {
+    fs.writeFileSync(path.join(dir, 'settings.json'), '﻿' + JSON.stringify({ agent: { maxToolRounds: 40 } }));
+    assert.equal(createSettings({ dir }).get().agent.maxToolRounds, 40);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

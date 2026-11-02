@@ -613,3 +613,19 @@ test('servedModel from the stream lands on the record with one event; the same v
     s.cleanup();
   }
 });
+
+test('a turn whose stream names no model clears servedModel, so no stale logo stays', async () => {
+  const s = setup({ script: [{ text: 'a', model: 'cx/gpt-4o' }, { text: 'b' }] });
+  try {
+    await s.agent.start();
+    s.agent.send('hai');
+    await s.agent.turn;
+    assert.equal(s.record.servedModel, 'cx/gpt-4o');
+    s.agent.send('lagi');
+    await s.agent.turn;
+    assert.equal(s.record.servedModel, null);
+    assert.deepEqual(s.of('servedModel').map((e) => e.model), ['cx/gpt-4o', null]);
+  } finally {
+    s.cleanup();
+  }
+});

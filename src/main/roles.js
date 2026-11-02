@@ -46,8 +46,11 @@ function createRoles({ dir = null } = {}) {
   let data = { edits: {}, custom: [] };
 
   if (file) {
+    let text = null;
     try {
-      const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+      text = fs.readFileSync(file, 'utf8');
+      // Notepad and some editors save a BOM, which JSON.parse refuses.
+      const raw = JSON.parse(text.replace(/^\uFEFF/, ''));
       // Anything unusable is dropped; the built-ins always remain.
       for (const [name, fields] of Object.entries(raw?.edits ?? {})) {
         if (BUILTIN_NAMES.includes(name)) try { data.edits[name] = clean(fields); } catch {}
@@ -61,6 +64,9 @@ function createRoles({ dir = null } = {}) {
       }
     } catch {
       data = { edits: {}, custom: [] };
+      // Keep an unreadable file before the next save replaces it, so custom
+      // roles can be recovered by hand.
+      if (text !== null) try { fs.copyFileSync(file, `${file}.bad`); } catch {}
     }
   }
 
