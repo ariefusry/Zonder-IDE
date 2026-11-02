@@ -61,6 +61,15 @@ button:disabled { cursor: default; opacity: .55; }
 .btn-spawn:not(:disabled):hover { background: var(--surface-2); }
 .side-label { padding: 4px 14px 6px; font-size: 11px; color: var(--muted); }
 .agent-list { flex: 1; overflow-y: auto; padding: 0 8px 8px; display: flex; flex-direction: column; gap: 6px; }
+.group { display: flex; flex-direction: column; gap: 6px; }
+.group-head { display: flex; align-items: center; gap: 6px; min-width: 0; background: transparent; border: 0; border-radius: 6px; padding: 4px 6px; color: var(--muted); font-size: 11px; text-align: left; }
+.group-head:hover { background: var(--surface-2); color: var(--text); }
+.group-head .chev { width: 6px; height: 6px; flex-shrink: 0; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: rotate(45deg); margin: 0 2px 3px; }
+.group-head[aria-expanded="false"] .chev { transform: rotate(-45deg); margin: 0 3px 0 1px; }
+.group-head .gname { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.group-head .gsum { margin-left: auto; white-space: nowrap; flex-shrink: 0; }
+.group-agents { display: flex; flex-direction: column; gap: 6px; }
+.group-agents[hidden] { display: none; }
 .agent-list .empty { padding: 4px 6px; color: var(--muted); font-size: 11px; }
 .agent {
   width: 100%; text-align: left; background: transparent; border: 1px solid var(--border);
