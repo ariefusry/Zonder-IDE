@@ -35,13 +35,15 @@ const PERMISSION_SETTINGS = {
   },
 };
 
-// Aliases, not dated ids, so the list survives model releases. Also the only
-// values setModel accepts: the renderer is not trusted.
-// Aliases first, then current versions (settings spec §4.6); any other claude-* id is allowed too.
-const CLAUDE_MODELS = ['opus', 'sonnet', 'haiku', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-4-7', 'claude-haiku-4-5'];
+// Versioned ids only: the owner found "sonnet" next to "claude-sonnet-5-5" confusing.
+// setModel also takes any other claude-* id; the renderer is not trusted.
+const CLAUDE_MODELS = ['claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-4-7', 'claude-haiku-4-5'];
+// Old aliases stay valid so agents saved with them still resume; settings swap
+// them for the versioned id.
+const CLAUDE_ALIASES = { opus: 'claude-opus-5-5', sonnet: 'claude-sonnet-5-5', haiku: 'claude-haiku-5-5' };
 const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const MODEL_ID = /^claude-[a-z0-9][a-z0-9.-]{1,60}(\[1m\])?$/;
-const isClaudeModelId = (s) => typeof s === 'string' && (CLAUDE_MODELS.includes(s) || MODEL_ID.test(s));
+const isClaudeModelId = (s) => typeof s === 'string' && (CLAUDE_MODELS.includes(s) || Object.hasOwn(CLAUDE_ALIASES, s) || MODEL_ID.test(s));
 
 // Event types kept in the agent's chat history; status, delta, queue and model are not.
 const PERSISTED = new Set(['message', 'tool_start', 'tool_end', 'error', 'exit']);
@@ -410,4 +412,4 @@ class ClaudeAgent {
   }
 }
 
-module.exports = { ClaudeAgent, buildArgs, resolveClaudeExe, killTree, toAction, CLAUDE_MODELS, CLAUDE_EFFORTS, isClaudeModelId, PERMISSION_SETTINGS };
+module.exports = { ClaudeAgent, buildArgs, resolveClaudeExe, killTree, toAction, CLAUDE_MODELS, CLAUDE_ALIASES, CLAUDE_EFFORTS, isClaudeModelId, PERMISSION_SETTINGS };

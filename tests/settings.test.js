@@ -13,7 +13,7 @@ test('get() on an empty dir returns the defaults', () => {
     const s = createSettings({ dir });
     assert.deepEqual(s.get(), {
       workspace: { defaultRepo: null, baseBranch: 'main', stopCleanup: null },
-      agent: { claude: { model: 'sonnet', effort: null }, router: { model: null, effort: null }, maxToolRounds: 25, commandTimeoutSec: 60 },
+      agent: { claude: { model: 'claude-sonnet-5-5', effort: null }, router: { model: null, effort: null }, maxToolRounds: 25, commandTimeoutSec: 60 },
       notify: { approval: true, done: true, error: true },
     });
     assert.deepEqual(s.get(), DEFAULTS);
@@ -103,4 +103,15 @@ test('agent defaults: claude model must be a claude id, efforts must be in their
   assert.throws(() => s.update({ agent: { claude: { effort: 'ultra' } } }), /Effort/);
   assert.throws(() => s.update({ agent: { router: { effort: 'xhigh' } } }), /Effort/);
   assert.equal(s.update({ agent: { claude: { effort: null }, router: { effort: null } } }).agent.claude.effort, null);
+});
+
+test('a stored or sent alias (opus, sonnet, haiku) becomes its versioned id', () => {
+  const dir = tmp();
+  try {
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ agent: { claude: { model: 'sonnet' } } }));
+    assert.equal(createSettings({ dir }).get().agent.claude.model, 'claude-sonnet-5-5');
+    assert.equal(createSettings({ dir }).update({ agent: { claude: { model: 'opus' } } }).agent.claude.model, 'claude-opus-5-5');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -61,7 +61,7 @@ async function openSpawnModal() {
     const keep = names.includes(role.value) ? role.value : 'Junior Developer';
     if (!spawnField('spKind').options.length) {
       spawnField('spKind').replaceChildren(...o.kinds.map((k) => el('option', { value: k }, KIND_LABELS[k] ?? k)));
-      fillSelect(spawnField('spModel'), o.models, 'sonnet');
+      fillSelect(spawnField('spModel'), o.models, 'claude-sonnet-5-5');
     }
     fillSelect(role, names, keep);
     // form.reset() puts the kind back to its first option; the model list must follow.
@@ -110,7 +110,7 @@ async function applyKind() {
   spawnField('spEffortHint').textContent = kind === 'router' ? 'Dikirim sebagai reasoning_effort; efeknya bergantung pada model.' : 'Bawaan: tanpa --effort.';
   if (kind !== 'router') {
     const list = spawnUi.options.claudeModels ?? spawnUi.options.models;
-    const want = d?.model ?? 'sonnet';
+    const want = d?.model ?? 'claude-sonnet-5-5';
     fillSelect(model, list, list.includes(want) ? want : list[0]);
     model.append(el('option', { value: CUSTOM_MODEL }, 'ID model lain...'));
     if (!list.includes(want)) {

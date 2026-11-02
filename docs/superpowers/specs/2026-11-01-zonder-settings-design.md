@@ -80,7 +80,7 @@ Pemilik belum mencoba banyak dari ini langsung, jadi versi pertama memakai defau
 - Pilihan default saat Stop agent: simpan worktree / hapus worktree / hapus worktree+branch.
 
 ### 4.6 Agent: model dan effort
-- **Claude, model:** daftar berisi alias (`opus`, `sonnet`, `haiku`) dan semua versi yang dikenal, termasuk `claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`, dan versi lama seperti `claude-opus-4-7` dan `claude-haiku-4-5`. Ditambah isian **ID model lain** agar versi baru bisa dipakai tanpa update Zonder. Dikirim lewat `--model`.
+- **Claude, model:** daftar hanya berisi versi yang dikenal (perubahan 2026-11-02: alias `opus`, `sonnet`, `haiku` dihapus dari daftar karena membingungkan di samping versinya; agent dan pengaturan lama yang memakai alias tetap jalan, dan pengaturan diubah ke versinya), yaitu `claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`, dan versi lama seperti `claude-opus-4-7` dan `claude-haiku-4-5`. Ditambah isian **ID model lain** agar versi baru bisa dipakai tanpa update Zonder. Dikirim lewat `--model`.
 - **Claude, effort:** `low`, `medium`, `high`, `xhigh`, `max`, lewat `--effort` (ada di CLI v2.1.316).
 - **9router, model:** dari daftar `/models` router.
 - **9router, effort:** `low`, `medium`, `high`, dikirim sebagai `reasoning_effort`. Router atau model yang tidak mendukung akan mengabaikannya; UI menyebut bahwa efeknya bergantung pada model.

@@ -553,12 +553,13 @@ test('buildArgs blocks every known skill the role did not pick', () => {
 
 const { isClaudeModelId, CLAUDE_EFFORTS } = require('../src/main/agents/claude-agent.js');
 
-test('CLAUDE_MODELS lists the aliases and the current versions', () => {
-  assert.deepEqual(CLAUDE_MODELS, ['opus', 'sonnet', 'haiku', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-4-7', 'claude-haiku-4-5']);
+test('CLAUDE_MODELS lists only versioned ids, no aliases', () => {
+  assert.deepEqual(CLAUDE_MODELS, ['claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-4-7', 'claude-haiku-4-5']);
   assert.deepEqual(CLAUDE_EFFORTS, ['low', 'medium', 'high', 'xhigh', 'max']);
 });
 
-test('isClaudeModelId: list members and claude-* ids pass; others fail', () => {
+// Aliases stay valid so agents saved with "sonnet" still resume and switch.
+test('isClaudeModelId: list members, old aliases and claude-* ids pass; others fail', () => {
   for (const ok of ['sonnet', 'claude-opus-5-5', 'claude-sonnet-6-0', 'claude-opus-4-7[1m]']) assert.ok(isClaudeModelId(ok), ok);
   for (const bad of ['gpt-5', 'claude-; rm', 'claude-', 'claude-A', '', null, 'claude-x'.padEnd(80, 'x')]) assert.ok(!isClaudeModelId(bad), String(bad));
 });

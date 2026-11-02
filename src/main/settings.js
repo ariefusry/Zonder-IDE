@@ -4,14 +4,14 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { CLAUDE_EFFORTS, isClaudeModelId } = require('./agents/claude-agent.js');
+const { CLAUDE_ALIASES, CLAUDE_EFFORTS, isClaudeModelId } = require('./agents/claude-agent.js');
 const { ROUTER_EFFORTS } = require('./agents/router-agent.js');
 
 const CLEANUPS = ['keep', 'worktree', 'worktree+branch'];
 
 const DEFAULTS = Object.freeze({
   workspace: { defaultRepo: null, baseBranch: 'main', stopCleanup: null },
-  agent: { claude: { model: 'sonnet', effort: null }, router: { model: null, effort: null }, maxToolRounds: 25, commandTimeoutSec: 60 },
+  agent: { claude: { model: 'claude-sonnet-5-5', effort: null }, router: { model: null, effort: null }, maxToolRounds: 25, commandTimeoutSec: 60 },
   notify: { approval: true, done: true, error: true },
 });
 
@@ -49,7 +49,7 @@ const RULES = {
     claude: {
       model: (v) => {
         if (!isClaudeModelId(v)) throw new Error('Model Claude tidak dikenal.');
-        return v;
+        return Object.hasOwn(CLAUDE_ALIASES, v) ? CLAUDE_ALIASES[v] : v;
       },
       effort: oneOf(CLAUDE_EFFORTS),
     },
