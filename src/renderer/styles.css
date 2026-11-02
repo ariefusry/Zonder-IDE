@@ -69,7 +69,8 @@ button:disabled { cursor: default; opacity: .55; }
 .agent:hover { background: var(--surface-2); }
 .agent[aria-selected="true"] { background: var(--surface-2); border-color: var(--accent-text); }
 .agent .dot { margin-top: 5px; }
-.agent .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent .nm { font-weight: 600; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.agent .nm > span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agent .md, .agent .stt { grid-column: 2; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agent .md { font-family: var(--mono); color: var(--muted); }
 .agent .stt { color: var(--c, var(--muted)); }
@@ -96,6 +97,15 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 .tab:hover { color: var(--text); }
 .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent-text); }
 .tab .dot { width: 6px; height: 6px; }
+
+/* Model logo (layout spec §4.3): grey like text, never a status colour. */
+.mlogo { width: 16px; height: 16px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+.mlogo.claude, .mlogo.openai, .mlogo.gemini, .mlogo.deepseek { background: var(--muted); mask: var(--logo) center / contain no-repeat; }
+.mlogo.claude { --logo: url("assets/models/claude.svg"); }
+.mlogo.openai { --logo: url("assets/models/openai.svg"); }
+.mlogo.gemini { --logo: url("assets/models/gemini.svg"); }
+.mlogo.deepseek { --logo: url("assets/models/deepseek.svg"); }
+.mlogo.initial { border: 1px solid var(--muted); border-radius: 50%; font-size: 9px; font-weight: 600; line-height: 1; }
 .chat-head { padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: baseline; gap: 8px; flex-shrink: 0; }
 .chat-head:empty { display: none; }
 .chat-head b { font-size: 13px; }

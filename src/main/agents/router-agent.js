@@ -129,6 +129,8 @@ class RouterAgent {
 
   setModel(model) {
     this.record.model = model;
+    // The last answer came from the old choice, so its model no longer applies.
+    this.record.servedModel = null;
     this.emitEvent({ type: 'model', model });
   }
 
@@ -208,6 +210,10 @@ class RouterAgent {
             this.emitEvent({ type: 'delta', text: part.delta });
           }
           if (part.toolCalls) calls = part.toolCalls;
+          if (part.servedModel && part.servedModel !== this.record.servedModel) {
+            this.record.servedModel = part.servedModel;
+            this.emitEvent({ type: 'servedModel', model: part.servedModel });
+          }
         }
         if (reply) this.emitEvent({ type: 'message', role: 'agent', text: reply });
 

@@ -52,7 +52,8 @@ async function listModels({ baseUrl, key, fetch = globalThis.fetch, timeoutMs = 
   return (Array.isArray(json?.data) ? json.data : []).map((m) => m?.id).filter((id) => typeof id === 'string');
 }
 
-// Yields {delta} for streamed text, then {toolCalls} if the model asked for
+// Yields {servedModel} once, from the first chunk naming the model that
+// answered (a combo names its member here), {delta} for streamed text, then {toolCalls} if the model asked for
 // tools, then {done: true}. Tool call fragments are joined by index; id and
 // name usually arrive only in the first fragment of each call.
 async function* streamChat({ baseUrl, key, model, messages, tools, effort = null, signal, fetch = globalThis.fetch }) {
@@ -71,6 +72,7 @@ async function* streamChat({ baseUrl, key, model, messages, tools, effort = null
   const decoder = new TextDecoder();
   let buf = '';
   let finished = false;
+  let served = false;
 
   const handle = (line) => {
     const out = [];
@@ -85,6 +87,10 @@ async function* streamChat({ baseUrl, key, model, messages, tools, effort = null
       json = JSON.parse(data);
     } catch {
       return out;
+    }
+    if (!served && typeof json?.model === 'string' && json.model) {
+      served = true;
+      out.push({ servedModel: json.model });
     }
     const delta = json?.choices?.[0]?.delta;
     if (typeof delta?.content === 'string' && delta.content) out.push({ delta: delta.content });

@@ -11,9 +11,9 @@ const enc = new TextEncoder();
 const sse = (obj) => `data: ${JSON.stringify(obj)}\n\n`;
 
 // One scripted model reply as SSE: {text} and/or {calls: [{id, name, args}]}.
-function replyChunks({ text, calls }) {
+function replyChunks({ text, calls, model }) {
   const chunks = [];
-  if (text) for (const part of text.match(/.{1,4}/gs)) chunks.push(sse({ choices: [{ index: 0, delta: { content: part } }] }));
+  if (text) for (const part of text.match(/.{1,4}/gs)) chunks.push(sse({ ...(model ? { model } : {}), choices: [{ index: 0, delta: { content: part } }] }));
   (calls || []).forEach((c, i) => {
     chunks.push(sse({ choices: [{ index: 0, delta: { tool_calls: [{ index: i, id: c.id, type: 'function', function: { name: c.name, arguments: '' } }] } }] }));
     chunks.push(sse({ choices: [{ index: 0, delta: { tool_calls: [{ index: i, function: { arguments: c.args } }] } }] }));
@@ -461,8 +461,11 @@ test('setModel switches the model for the next request', async () => {
   const s = setup({ script: [{ text: 'a' }] });
   try {
     await s.agent.start();
+    s.record.servedModel = 'kr/claude-sonnet-4.5';
     s.agent.setModel('m2');
     assert.equal(s.of('model')[0].model, 'm2');
+    // The old answer's model says nothing about the new choice.
+    assert.equal(s.record.servedModel, null);
     s.agent.send('hai');
     await s.agent.turn;
     assert.equal(s.router.requests[0].model, 'm2');
@@ -590,6 +593,22 @@ test('setEffort applies to the next request without restart; bad values throw', 
     assert.equal(s.router.modelCalls(), 1, 'no restart');
     assert.deepEqual(s.of('effort').map(({ effort, pending }) => ({ effort, pending })), [{ effort: 'low', pending: false }]);
     assert.throws(() => s.agent.setEffort('xhigh'), /Effort tidak dikenal/);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('servedModel from the stream lands on the record with one event; the same value next turn emits none', async () => {
+  const s = setup({ script: [{ text: 'a', model: 'kr/claude-sonnet-4.5' }, { text: 'b', model: 'kr/claude-sonnet-4.5' }] });
+  try {
+    await s.agent.start();
+    s.agent.send('hai');
+    await s.agent.turn;
+    assert.equal(s.record.servedModel, 'kr/claude-sonnet-4.5');
+    assert.deepEqual(s.of('servedModel').map((e) => [e.agentId, e.model]), [['r1', 'kr/claude-sonnet-4.5']]);
+    s.agent.send('lagi');
+    await s.agent.turn;
+    assert.equal(s.of('servedModel').length, 1);
   } finally {
     s.cleanup();
   }

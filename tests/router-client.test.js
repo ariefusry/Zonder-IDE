@@ -146,3 +146,11 @@ test('streamChat: effort medium -> reasoning_effort medium; null -> key absent',
   assert.equal(calls[0].body.reasoning_effort, 'medium');
   assert.ok(!('reasoning_effort' in calls[1].body));
 });
+
+test('stream with model "kr/claude-sonnet-4.5" in chunks yields one {servedModel}; chunks without model or with "" yield none', async () => {
+  const withModel = (text, model) => sse({ model, choices: [{ index: 0, delta: { content: text } }] });
+  const out = await collect(streamChat({ ...base, fetch: sseFetch([withModel('a', 'kr/claude-sonnet-4.5'), withModel('b', 'kr/claude-sonnet-4.5'), 'data: [DONE]\n\n']) }));
+  assert.deepEqual(out.filter((x) => 'servedModel' in x), [{ servedModel: 'kr/claude-sonnet-4.5' }]);
+  const none = await collect(streamChat({ ...base, fetch: sseFetch([textChunk('a'), withModel('b', ''), 'data: [DONE]\n\n']) }));
+  assert.equal(none.filter((x) => 'servedModel' in x).length, 0);
+});

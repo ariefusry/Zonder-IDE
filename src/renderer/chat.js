@@ -16,7 +16,7 @@ function renderTabs(state, handlers) {
   for (const a of state.agents) {
     const dot = el('span', { class: 'dot' });
     dot.style.setProperty('--c', STATUS[a.status].color);
-    const tab = el('button', { class: 'tab', role: 'tab', 'aria-selected': String(a.id === state.selected) }, dot, a.name);
+    const tab = el('button', { class: 'tab', role: 'tab', 'aria-selected': String(a.id === state.selected) }, dot, Models.logoNode(a), a.name);
     tab.addEventListener('click', () => handlers.onSelect(a.id));
     tabs.append(tab);
   }

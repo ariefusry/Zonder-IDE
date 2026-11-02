@@ -326,7 +326,11 @@ function onAgentEvent(evt) {
   if (evt.type === 'status' && a) a.status = evt.to;
   // A finished turn may have changed files; recount while Perubahan is open.
   if (evt.type === 'status' && ['idle', 'done', 'error'].includes(evt.to) && state.selected === evt.agentId && viewOf(state, evt.agentId) === 'changes') loadChanges(evt.agentId);
-  if (evt.type === 'model' && a) a.model = evt.model;
+  if (evt.type === 'model' && a) {
+    a.model = evt.model;
+    a.servedModel = null;
+  }
+  if (evt.type === 'servedModel' && a) a.servedModel = evt.model;
   if (evt.type === 'effort' && a) {
     a.effort = evt.effort;
     a.effortPending = evt.pending;
@@ -350,7 +354,7 @@ function onAgentEvent(evt) {
     if (shown && changed && !updateStream(state)) renderMessages(state, handlers);
     return;
   }
-  if (['status', 'model', 'effort', 'queue'].includes(evt.type)) renderChrome();
+  if (['status', 'model', 'servedModel', 'effort', 'queue'].includes(evt.type)) renderChrome();
   if (shown && (changed || evt.type === 'queue')) renderMessages(state, handlers);
 }
 

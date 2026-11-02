@@ -23,8 +23,8 @@ function renderSidebar(state, onSelect) {
     const st = STATUS[a.status];
     const card = el('button', { class: 'agent', role: 'tab', 'aria-selected': String(a.id === state.selected) },
       el('span', { class: 'dot' }),
-      el('span', { class: 'nm' }, a.name),
-      el('span', { class: 'md' }, a.model),
+      el('span', { class: 'nm' }, Models.logoNode(a), el('span', {}, a.name)),
+      el('span', { class: 'md' }, Models.modelLine(a)),
       el('span', { class: 'rl' }, roleDeleted(state, a) ? `${a.role}, peran dihapus` : a.role),
       el('span', { class: 'stt' }, a.line ? `${st.label}: ${a.line}` : st.label),
     );
